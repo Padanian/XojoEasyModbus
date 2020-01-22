@@ -1,0 +1,4 @@
+﻿[*.cs]
+
+# CS0414: Il campo 'ModbusServer.dataReceived' è assegnato, ma il suo valore non viene mai usato
+dotnet_diagnostic.CS0414.severity = none

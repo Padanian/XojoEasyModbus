@@ -24,7 +24,7 @@ using System.Threading;
 using System.Net.NetworkInformation;
 using System.IO.Ports;
 
-namespace EasyModbus
+namespace XojoEasyModbus
 {
 #region class ModbusProtocol
     /// <summary>
@@ -169,8 +169,7 @@ namespace EasyModbus
             Client client = asyncResult.AsyncState as Client;
             client.Ticks = DateTime.Now.Ticks;
             NumberOfConnectedClients = GetAndCleanNumberOfConnectedClients(client);
-            if (numberOfClientsChanged != null)
-                numberOfClientsChanged();
+            numberOfClientsChanged?.Invoke();
             if (client != null)
             {
                 int read;
@@ -181,7 +180,9 @@ namespace EasyModbus
 
                     read = networkStream.EndRead(asyncResult);
                 }
+#pragma warning disable CS0168 // La variabile è dichiarata, ma non viene mai usata
                 catch (Exception ex)
+#pragma warning restore CS0168 // La variabile è dichiarata, ma non viene mai usata
                 {
                     return;
                 }
@@ -197,8 +198,7 @@ namespace EasyModbus
                 Buffer.BlockCopy(client.Buffer, 0, data, 0, read);
                 networkConnectionParameter.bytes = data;
                 networkConnectionParameter.stream = networkStream;
-                if (dataChanged != null)
-                    dataChanged(networkConnectionParameter);
+                dataChanged?.Invoke(networkConnectionParameter);
                 try
                 {
                     networkStream.BeginRead(client.Buffer, 0, client.Buffer.Length, ReadCallback, client);
@@ -374,22 +374,24 @@ namespace EasyModbus
                     catch (Exception) { }
                 }             
                 tcpHandler = new TCPHandler(port);
-                if (debug) StoreLogData.Instance.Store("EasyModbus Server listing for incomming data at Port " + port, System.DateTime.Now);
+                if (debug) StoreLogData.Instance.Store("XojoEasyModbus Server listing for incomming data at Port " + port, System.DateTime.Now);
                 tcpHandler.dataChanged += new TCPHandler.DataChanged(ProcessReceivedData);
-                tcpHandler.numberOfClientsChanged += new TCPHandler.NumberOfClientsChanged(numberOfClientsChanged);
+                tcpHandler.numberOfClientsChanged += new TCPHandler.NumberOfClientsChanged(NumberOfClientsChanged);
             }
             else if (serialFlag)
             {
                 if (serialport == null)
                 {
-                    if (debug) StoreLogData.Instance.Store("EasyModbus RTU-Server listing for incomming data at Serial Port " + serialPort, System.DateTime.Now);
-                    serialport = new SerialPort();
-                    serialport.PortName = serialPort;
-                    serialport.BaudRate = this.baudrate;
-                    serialport.Parity = this.parity;
-                    serialport.StopBits = stopBits;
-                    serialport.WriteTimeout = 10000;
-                    serialport.ReadTimeout = 1000;
+                    if (debug) StoreLogData.Instance.Store("XojoEasyModbus RTU-Server listing for incomming data at Serial Port " + serialPort, System.DateTime.Now);
+                    serialport = new SerialPort
+                    {
+                        PortName = serialPort,
+                        BaudRate = this.baudrate,
+                        Parity = this.parity,
+                        StopBits = stopBits,
+                        WriteTimeout = 10000,
+                        ReadTimeout = 1000
+                    };
                     serialport.DataReceived += new SerialDataReceivedEventHandler(DataReceivedHandler);
                     serialport.Open();
                 }
@@ -402,7 +404,7 @@ namespace EasyModbus
                     if (udpClient == null | PortChanged)
                     {
                         udpClient = new UdpClient(port);
-                        if (debug) StoreLogData.Instance.Store("EasyModbus Server listing for incomming data at Port " + port, System.DateTime.Now);
+                        if (debug) StoreLogData.Instance.Store("XojoEasyModbus Server listing for incomming data at Port " + port, System.DateTime.Now);
                         udpClient.Client.ReceiveTimeout = 1000;
                         iPEndPoint = new IPEndPoint(IPAddress.Any, port);
                         PortChanged = false;                      
@@ -413,9 +415,11 @@ namespace EasyModbus
                     {                       
                         bytes = udpClient.Receive(ref iPEndPoint);
                         portIn = iPEndPoint.Port;
-                        NetworkConnectionParameter networkConnectionParameter = new NetworkConnectionParameter();
-                        networkConnectionParameter.bytes = bytes;
-                        ipAddressIn = iPEndPoint.Address;
+                            NetworkConnectionParameter networkConnectionParameter = new NetworkConnectionParameter
+                            {
+                                bytes = bytes
+                            };
+                            ipAddressIn = iPEndPoint.Address;
                         networkConnectionParameter.portIn = portIn;
                         networkConnectionParameter.ipAddressIn = ipAddressIn;
                         ParameterizedThreadStart pts = new ParameterizedThreadStart(this.ProcessReceivedData);
@@ -462,9 +466,11 @@ namespace EasyModbus
                 dataReceived = true;
                 nextSign= 0;
 
-                    NetworkConnectionParameter networkConnectionParameter = new NetworkConnectionParameter();
-                    networkConnectionParameter.bytes = readBuffer;
-                    ParameterizedThreadStart pts = new ParameterizedThreadStart(this.ProcessReceivedData);
+                NetworkConnectionParameter networkConnectionParameter = new NetworkConnectionParameter
+                {
+                    bytes = readBuffer
+                };
+                ParameterizedThreadStart pts = new ParameterizedThreadStart(this.ProcessReceivedData);
                     Thread processDataThread = new Thread(pts);
                     processDataThread.Start(networkConnectionParameter);
                     dataReceived = false;
@@ -475,12 +481,11 @@ namespace EasyModbus
         }
 		#endregion
  
-		#region Method numberOfClientsChanged
-        private void numberOfClientsChanged()
+		#region Method NumberOfClientsChanged
+        private void NumberOfClientsChanged()
         {
             numberOfConnections = tcpHandler.NumberOfConnectedClients;
-            if (NumberOfConnectedClientsChanged != null)
-                NumberOfConnectedClientsChanged();
+            NumberOfConnectedClientsChanged?.Invoke();
         }
         #endregion
 
@@ -638,14 +643,15 @@ namespace EasyModbus
                         }
                     }
                 }
+#pragma warning disable CS0168 // La variabile è dichiarata, ma non viene mai usata
                 catch (Exception exc)
+#pragma warning restore CS0168 // La variabile è dichiarata, ma non viene mai usata
                 { }
                 this.CreateAnswer(receiveDataThread, sendDataThread, stream, portIn, ipAddressIn);
                 //this.sendAnswer();
                 this.CreateLogData(receiveDataThread, sendDataThread);
 
-                if (LogDataChanged != null)
-                    LogDataChanged();
+                LogDataChanged?.Invoke();
             }
         }
         #endregion
@@ -664,7 +670,7 @@ namespace EasyModbus
                     {
                         sendData.errorCode = (byte)(receiveData.functionCode + 0x80);
                         sendData.exceptionCode = 1;
-                        sendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
+                        SendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
                     }
                     break;
                 // Read Input Registers
@@ -675,7 +681,7 @@ namespace EasyModbus
                     {
                         sendData.errorCode = (byte)(receiveData.functionCode + 0x80);
                         sendData.exceptionCode = 1;
-                        sendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
+                        SendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
                     }
                     
                     break;
@@ -687,7 +693,7 @@ namespace EasyModbus
                     {
                         sendData.errorCode = (byte)(receiveData.functionCode + 0x80);
                         sendData.exceptionCode = 1;
-                        sendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
+                        SendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
                     }
                     
                     break;
@@ -699,7 +705,7 @@ namespace EasyModbus
                     {
                         sendData.errorCode = (byte)(receiveData.functionCode + 0x80);
                         sendData.exceptionCode = 1;
-                        sendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
+                        SendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
                     }
                     
                     break;
@@ -711,7 +717,7 @@ namespace EasyModbus
                     {
                         sendData.errorCode = (byte)(receiveData.functionCode + 0x80);
                         sendData.exceptionCode = 1;
-                        sendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
+                        SendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
                     }
                     
                     break;
@@ -723,7 +729,7 @@ namespace EasyModbus
                     {
                         sendData.errorCode = (byte)(receiveData.functionCode + 0x80);
                         sendData.exceptionCode = 1;
-                        sendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
+                        SendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
                     }
                     
                         break;
@@ -735,7 +741,7 @@ namespace EasyModbus
                         {
                             sendData.errorCode = (byte)(receiveData.functionCode + 0x80);
                             sendData.exceptionCode = 1;
-                            sendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
+                            SendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
                         }
 
                         break;
@@ -747,7 +753,7 @@ namespace EasyModbus
                         {
                             sendData.errorCode = (byte)(receiveData.functionCode + 0x80);
                             sendData.exceptionCode = 1;
-                            sendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
+                            SendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
                         }
 
                         break;
@@ -759,14 +765,14 @@ namespace EasyModbus
                         {
                             sendData.errorCode = (byte)(receiveData.functionCode + 0x80);
                             sendData.exceptionCode = 1;
-                            sendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
+                            SendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
                         }
 
                         break;
                 // Error: Function Code not supported
                 default: sendData.errorCode = (byte) (receiveData.functionCode + 0x80);
                         sendData.exceptionCode = 1;
-                        sendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
+                        SendException(sendData.errorCode, sendData.exceptionCode, receiveData, sendData, stream, portIn, ipAddressIn);
                         break;
             }
             sendData.timeStamp = DateTime.Now;
@@ -869,10 +875,10 @@ namespace EasyModbus
                     if (serialFlag)
                     {
                         if (!serialport.IsOpen)
-                            throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                            throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
                         //Create CRC
                         XojoModbusClient NewXojoModbusClient = new XojoModbusClient();
-                        sendData.crc = NewXojoModbusClient.calculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
+                        sendData.crc = NewXojoModbusClient.CalculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
                         byteData = BitConverter.GetBytes((int)sendData.crc);
                         data[data.Length - 2] = byteData[0];
                         data[data.Length - 1] = byteData[1];
@@ -997,10 +1003,10 @@ namespace EasyModbus
                     if (serialFlag)
                     {
                         if (!serialport.IsOpen)
-                            throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                            throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
                         //Create CRC
                         XojoModbusClient NewXojoModbusClient = new XojoModbusClient();
-                        sendData.crc = NewXojoModbusClient.calculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
+                        sendData.crc = NewXojoModbusClient.CalculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
                         byteData = BitConverter.GetBytes((int)sendData.crc);
                         data[data.Length - 2] = byteData[0];
                         data[data.Length - 1] = byteData[1];
@@ -1114,10 +1120,10 @@ namespace EasyModbus
                     if (serialFlag)
                     {
                         if (!serialport.IsOpen)
-                            throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                            throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
                         //Create CRC
                         XojoModbusClient NewXojoModbusClient = new XojoModbusClient();
-                        sendData.crc = NewXojoModbusClient.calculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
+                        sendData.crc = NewXojoModbusClient.CalculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
                         byteData = BitConverter.GetBytes((int)sendData.crc);
                         data[data.Length - 2] = byteData[0];
                         data[data.Length - 1] = byteData[1];
@@ -1231,10 +1237,10 @@ namespace EasyModbus
                     if (serialFlag)
                     {
                         if (!serialport.IsOpen)
-                            throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                            throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
                         //Create CRC
                         XojoModbusClient NewXojoModbusClient = new XojoModbusClient();
-                        sendData.crc = NewXojoModbusClient.calculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
+                        sendData.crc = NewXojoModbusClient.CalculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
                         byteData = BitConverter.GetBytes((int)sendData.crc);
                         data[data.Length - 2] = byteData[0];
                         data[data.Length - 1] = byteData[1];
@@ -1359,10 +1365,10 @@ namespace EasyModbus
                     if (serialFlag)
                     {
                         if (!serialport.IsOpen)
-                            throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                            throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
                         //Create CRC
                         XojoModbusClient NewXojoModbusClient = new XojoModbusClient();
-                        sendData.crc = NewXojoModbusClient.calculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
+                        sendData.crc = NewXojoModbusClient.CalculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
                         byteData = BitConverter.GetBytes((int)sendData.crc);
                         data[data.Length - 2] = byteData[0];
                         data[data.Length - 1] = byteData[1];
@@ -1389,8 +1395,7 @@ namespace EasyModbus
                     }
                 }
                 catch (Exception) { }
-                if (CoilsChanged != null)
-                    CoilsChanged(receiveData.startingAdress+1, 1);
+                CoilsChanged?.Invoke(receiveData.startingAdress + 1, 1);
             }
         }
 
@@ -1483,10 +1488,10 @@ namespace EasyModbus
                     if (serialFlag)
                     {
                         if (!serialport.IsOpen)
-                            throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                            throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
                         //Create CRC
                         XojoModbusClient NewXojoModbusClient = new XojoModbusClient();
-                        sendData.crc = NewXojoModbusClient.calculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
+                        sendData.crc = NewXojoModbusClient.CalculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
                         byteData = BitConverter.GetBytes((int)sendData.crc);
                         data[data.Length - 2] = byteData[0];
                         data[data.Length - 1] = byteData[1];
@@ -1513,8 +1518,7 @@ namespace EasyModbus
                     }
                 }
                 catch (Exception) { }
-                if (HoldingRegistersChanged != null)
-                    HoldingRegistersChanged(receiveData.startingAdress+1, 1);
+                HoldingRegistersChanged?.Invoke(receiveData.startingAdress + 1, 1);
             }
         }
 
@@ -1554,7 +1558,7 @@ namespace EasyModbus
                                             shift = shift - 8;
                                     }*/
                         int mask = 0x1;
-                        mask = mask << (shift);
+                        mask <<= (shift);
                         if ((receiveData.receiveCoilValues[i / 16] & (ushort)mask) == 0)
                         
                             coils[receiveData.startingAdress + i + 1] = false;
@@ -1624,10 +1628,10 @@ namespace EasyModbus
                     if (serialFlag)
                     {
                         if (!serialport.IsOpen)
-                            throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                            throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
                         //Create CRC
                         XojoModbusClient NewXojoModbusClient = new XojoModbusClient();
-                        sendData.crc = NewXojoModbusClient.calculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
+                        sendData.crc = NewXojoModbusClient.CalculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
                         byteData = BitConverter.GetBytes((int)sendData.crc);
                         data[data.Length - 2] = byteData[0];
                         data[data.Length - 1] = byteData[1];
@@ -1654,8 +1658,7 @@ namespace EasyModbus
                     }
                 }
                 catch (Exception) { }
-                if (CoilsChanged != null)
-                    CoilsChanged(receiveData.startingAdress+1, receiveData.quantity);
+                CoilsChanged?.Invoke(receiveData.startingAdress + 1, receiveData.quantity);
             }
         }
 
@@ -1749,10 +1752,10 @@ namespace EasyModbus
                     if (serialFlag)
                     {
                         if (!serialport.IsOpen)
-                            throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                            throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
                         //Create CRC
                         XojoModbusClient NewXojoModbusClient = new XojoModbusClient();
-                        sendData.crc = NewXojoModbusClient.calculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
+                        sendData.crc = NewXojoModbusClient.CalculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
                         byteData = BitConverter.GetBytes((int)sendData.crc);
                         data[data.Length - 2] = byteData[0];
                         data[data.Length - 1] = byteData[1];
@@ -1779,8 +1782,7 @@ namespace EasyModbus
                     }
                     }
                 catch (Exception) { }
-                if (HoldingRegistersChanged != null)
-                    HoldingRegistersChanged(receiveData.startingAdress+1, receiveData.quantity);
+                HoldingRegistersChanged?.Invoke(receiveData.startingAdress + 1, receiveData.quantity);
             }
         }
 
@@ -1881,10 +1883,10 @@ namespace EasyModbus
                     if (serialFlag)
                     {
                         if (!serialport.IsOpen)
-                            throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                            throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
                         //Create CRC
                         XojoModbusClient NewXojoModbusClient = new XojoModbusClient();
-                        sendData.crc = NewXojoModbusClient.calculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
+                        sendData.crc = NewXojoModbusClient.CalculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
                         byteData = BitConverter.GetBytes((int)sendData.crc);
                         data[data.Length - 2] = byteData[0];
                         data[data.Length - 1] = byteData[1];
@@ -1911,12 +1913,11 @@ namespace EasyModbus
                     }
                 }
                 catch (Exception) { }
-                if (HoldingRegistersChanged != null)
-                    HoldingRegistersChanged(receiveData.startingAddressWrite+1, receiveData.quantityWrite);
+                HoldingRegistersChanged?.Invoke(receiveData.startingAddressWrite + 1, receiveData.quantityWrite);
             }
         }
 
-        private void sendException(int errorCode, int exceptionCode, ModbusProtocol receiveData, ModbusProtocol sendData, NetworkStream stream, int portIn, IPAddress ipAddressIn)
+        private void SendException(int errorCode, int exceptionCode, ModbusProtocol receiveData, ModbusProtocol sendData, NetworkStream stream, int portIn, IPAddress ipAddressIn)
         {
             sendData.response = true;
 
@@ -1970,10 +1971,10 @@ namespace EasyModbus
                     if (serialFlag)
                     {
                         if (!serialport.IsOpen)
-                            throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                            throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
                         //Create CRC
                         XojoModbusClient NewXojoModbusClient = new XojoModbusClient();
-                        sendData.crc = NewXojoModbusClient.calculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
+                        sendData.crc = NewXojoModbusClient.CalculateCRC(data, Convert.ToUInt16(data.Length - 8), 6);
                         byteData = BitConverter.GetBytes((int)sendData.crc);
                         data[data.Length - 2] = byteData[0];
                         data[data.Length - 1] = byteData[1];
@@ -2164,7 +2165,7 @@ namespace EasyModbus
         public Int16[] localArray = new Int16[65535];
         ModbusServer modbusServer;
      
-        public HoldingRegisters(EasyModbus.ModbusServer modbusServer)
+        public HoldingRegisters(XojoEasyModbus.ModbusServer modbusServer)
         {
             this.modbusServer = modbusServer;
         }
@@ -2185,7 +2186,7 @@ namespace EasyModbus
         public Int16[] localArray = new Int16[65535];
         ModbusServer modbusServer;
 
-        public InputRegisters(EasyModbus.ModbusServer modbusServer)
+        public InputRegisters(XojoEasyModbus.ModbusServer modbusServer)
         {
             this.modbusServer = modbusServer;
         }
@@ -2206,7 +2207,7 @@ namespace EasyModbus
         public bool[] localArray = new bool[65535];
         ModbusServer modbusServer;
 
-        public Coils(EasyModbus.ModbusServer modbusServer)
+        public Coils(XojoEasyModbus.ModbusServer modbusServer)
         {
             this.modbusServer = modbusServer;
         }
@@ -2227,7 +2228,7 @@ namespace EasyModbus
         public bool[] localArray = new bool[65535];
         ModbusServer modbusServer;
 
-        public DiscreteInputs(EasyModbus.ModbusServer modbusServer)
+        public DiscreteInputs(XojoEasyModbus.ModbusServer modbusServer)
         {
             this.modbusServer = modbusServer;
         }
