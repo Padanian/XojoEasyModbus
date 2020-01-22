@@ -21,29 +21,51 @@ using System.Net.Sockets;
 using System.Net;
 using System.IO.Ports;
 using System.Reflection;
-using System.Text;
-using System.Collections.Generic;
-using RGiesecke.DllExport;
 using System.Runtime.InteropServices;
 
 [InterfaceType(ComInterfaceType.InterfaceIsDual)]
-public interface XojoManagedInterface
+public interface IXojoManagedInterface
 {
     [DispId(1)]
-    int ModbusClient(string ipAddress, int port);
-    string ModbusClient(string serialPort);
+    int ModbusClientIP(string ipAddress, int port);
+    string ModbusClientRTU(string serialPort);
     int ModbusClient();
     bool Connect();
-    bool Connect(string ipAddress, int port);
-    float ConvertRegistersToFloat(int[] registers);
-    float ConvertRegistersToFloat(int[] registers, int registerOrder);
-    int ConvertRegistersToInt(int[] registers);
-
-    UInt16 calculateCRC(byte[] data, UInt16 numberOfBytes, int startByte);
+    bool ConnectIP(string ipAddress, int port);
+    float ConvertRegistersToFloat(ushort[] registers);
+    float ConvertRegistersToFloatOrderSelect(ushort[] registers, int registerorder);
+    int ConvertRegistersToInt(ushort[] registers);
+    int ConvertRegistersToIntOrderSelect(ushort[] registers, int registerorder);
+    long ConvertRegistersToLong(ushort[] registers);
+    long ConvertRegistersToLongOrderSelect(ushort[] registers, int registerorder);
+    double ConvertRegistersToDouble(ushort[] registers);
+    double ConvertRegistersToDoubleOrderSelect(ushort[] registers, int registerorder);
+    ushort[] ConvertFloatToRegisters(float floatValue);
+    ushort[] ConvertFloatToRegistersOrderSelect(float floatValue, int registerorder);
+    ushort[] ConvertIntToRegisters(int intValue);
+    ushort[] ConvertIntToRegistersOrderSelect(int intValue, int registerorder);
+    ushort[] ConvertLongToRegisters(long longValue);
+    ushort[] ConvertLongToRegistersOrderSelect(long longValue, int registerorder);
+    ushort[] ConvertDoubleToRegisters(double doubleValue);
+    ushort[] ConvertDoubleToRegistersOrderSelect(double doubleValue, int registerorder);
+    string ConvertRegistersToString(ushort[] registers, int offset, int stringLength);
+    ushort[] ConvertStringToRegisters(string stringToConvert);
+    ushort CalculateCRC(byte[] data, ushort numberOfBytes, int startByte);
     bool DetectValidModbusFrame(byte[] readBuffer, int length);
+    bool[] ReadDiscreteInputs(int startingAddress, int quantity);
+    bool[] ReadCoils(int startingAddress, int quantity);
+    ushort[] ReadHoldingRegisters(int startingAddress, int quantity);
+    ushort[] ReadInputRegisters(int startingAddress, int quantity);
+    void WriteSingleCoil(int startingAddress, bool value);
+    void WriteSingleRegister(int startingAddress, int value);
+    void WriteMultipleCoils(int startingAddress, bool[] values);
+    void WriteMultipleRegisters(int startingAddress, int[] values);
+    ushort[] ReadWriteMultipleRegisters(int startingAddressRead, int quantityRead, int startingAddressWrite, int[] values);
+    void Disconnect();
+    bool Available(int timeout);
 }
 
-namespace EasyModbus
+namespace XojoEasyModbus
 
 {
 	/// <summary>
@@ -51,7 +73,7 @@ namespace EasyModbus
 	/// </summary>
     /// 
     [ClassInterface(ClassInterfaceType.None)]
-	public partial class XojoModbusClient : XojoManagedInterface
+	public partial class XojoModbusClient : IXojoManagedInterface
 	{
 #region Declarations
         public enum RegisterOrder { LowHigh = 0, HighLow = 1 };
@@ -97,7 +119,7 @@ namespace EasyModbus
         /// </summary>
         /// <param name="ipAddress">IP-Address of the Master device</param>
         /// <param name="port">Listening port of the Master device (should be 502)</param>
-        public int ModbusClient(string ipAddress, int port) 
+        public int ModbusClientIP(string ipAddress, int port) 
 		{
 			if (debug) StoreLogData.Instance.Store("EasyModbus library initialized for Modbus-TCP, IPAddress: " + ipAddress + ", Port: "+port ,System.DateTime.Now);
 #if (!COMMERCIAL)
@@ -113,7 +135,7 @@ namespace EasyModbus
         /// Constructor which determines the Serial-Port
         /// </summary>
         /// <param name="serialPort">Serial-Port Name e.G. "COM1"</param>
-        public string ModbusClient(string serialPort)
+        public string ModbusClientRTU(string serialPort)
         {
         	if (debug) StoreLogData.Instance.Store("EasyModbus library initialized for Modbus-RTU, COM-Port: " + serialPort ,System.DateTime.Now);
 #if (!COMMERCIAL)
@@ -184,7 +206,7 @@ namespace EasyModbus
                 var success = result.AsyncWaitHandle.WaitOne(connectTimeout);
                 if (!success)
                 {
-                    throw new EasyModbus.Exceptions.ConnectionException("connection timed out");
+                    throw new XojoEasyModbus.Exceptions.ConnectionException("connection timed out");
                 }
                 tcpClient.EndConnect(result);
 
@@ -212,7 +234,7 @@ namespace EasyModbus
 		/// <summary>
 		/// Establish connection to Master device in case of Modbus TCP.
 		/// </summary>
-		public bool Connect(string ipAddress, int port)
+		public bool ConnectIP(string ipAddress, int port)
 		{
             if (!udpFlag)
             {
@@ -222,7 +244,7 @@ namespace EasyModbus
                 var success = result.AsyncWaitHandle.WaitOne(connectTimeout);
                 if (!success)
                 {
-                    throw new EasyModbus.Exceptions.ConnectionException("connection timed out");
+                    throw new XojoEasyModbus.Exceptions.ConnectionException("connection timed out");
                 }
                 tcpClient.EndConnect(result);
 
@@ -237,8 +259,7 @@ namespace EasyModbus
                 connected = true;
             }
 
-            if (ConnectedChanged != null)
-                ConnectedChanged(this);
+            ConnectedChanged?.Invoke(this);
             return connected;
         }
         /// <summary>
@@ -246,10 +267,10 @@ namespace EasyModbus
         /// </summary>
         /// <param name="registers">Two Register values received from Modbus</param>
         /// <returns>Connected float value</returns>
-        public  float ConvertRegistersToFloat(int[] registers)
+        public float ConvertRegistersToFloat(ushort[] registers)
         {
             if (registers.Length != 2)
-                throw new ArgumentException("Input Array length invalid - Array langth must be '2'");
+                throw new ArgumentException("Input Array length invalid - Array length must be '2'");
             int highRegister = registers[1];
             int lowRegister = registers[0];
             byte[] highRegisterBytes = BitConverter.GetBytes(highRegister);
@@ -266,13 +287,13 @@ namespace EasyModbus
         /// Converts two ModbusRegisters to Float, Registers can by swapped
         /// </summary>
         /// <param name="registers">Two Register values received from Modbus</param>
-        /// <param name="registerOrder">Desired Word Order (Low Register first or High Register first</param>
+        /// <param name="registerorder">Desired Word Order (Low Register first or High Register first</param>
         /// <returns>Connected float value</returns>
-        public  float ConvertRegistersToFloat(int[] registers, int registerOrder)
+        public float ConvertRegistersToFloatOrderSelect(ushort[] registers, int registerorder)
         {
-            int [] swappedRegisters = {registers[0],registers[1]};
-            if (registerOrder == 1) 
-                swappedRegisters = new int[] {registers[1],registers[0]};
+            ushort [] swappedRegisters = {registers[0],registers[1]};
+            if (registerorder == 1) 
+                swappedRegisters = new ushort[] {registers[1],registers[0]};
             return ConvertRegistersToFloat(swappedRegisters);
         }
         /// <summary>
@@ -280,7 +301,7 @@ namespace EasyModbus
         /// </summary>
         /// <param name="registers">Two Register values received from Modbus</param>
         /// <returns>Connected 32 Bit Integer value</returns>
-        public  int ConvertRegistersToInt(int[] registers)
+        public int ConvertRegistersToInt(ushort[] registers)
         {
             if (registers.Length != 2)
                 throw new ArgumentException("Input Array length invalid - Array langth must be '2'");
@@ -300,24 +321,23 @@ namespace EasyModbus
         /// Converts two ModbusRegisters to 32 Bit Integer Value - Registers can be swapped
         /// </summary>
         /// <param name="registers">Two Register values received from Modbus</param>
-        /// <param name="registerOrder">Desired Word Order (Low Register first or High Register first</param>
+        /// <param name="registerorder">Desired Word Order (Low Register first or High Register first</param>
         /// <returns>Connecteds 32 Bit Integer value</returns>
-        public static Int32 ConvertRegistersToInt(int[] registers, RegisterOrder registerOrder)
+        public int ConvertRegistersToIntOrderSelect(ushort[] registers, int registerorder)
         {
-            int[] swappedRegisters = { registers[0], registers[1] };
-            if (registerOrder == RegisterOrder.HighLow)
-                swappedRegisters = new int[] { registers[1], registers[0] };
+            ushort[] swappedRegisters = { registers[0], registers[1] };
+            if (registerorder == 1)
+                swappedRegisters = new ushort[] { registers[1], registers[0] };
             XojoModbusClient NewXojoModbusClient = new XojoModbusClient();
             int temp = NewXojoModbusClient.ConvertRegistersToInt(swappedRegisters);
             return temp;
         }
-
         /// <summary>
         /// Convert four 16 Bit Registers to 64 Bit Integer value Register Order "LowHigh": Reg0: Low Word.....Reg3: High Word, "HighLow": Reg0: High Word.....Reg3: Low Word
         /// </summary>
         /// <param name="registers">four Register values received from Modbus</param>
         /// <returns>64 bit value</returns>
-        public static Int64 ConvertRegistersToLong(int[] registers)
+        public long ConvertRegistersToLong(ushort[] registers)
         {
             if (registers.Length != 4)
                 throw new ArgumentException("Input Array length invalid - Array langth must be '4'");
@@ -341,29 +361,27 @@ namespace EasyModbus
                                 };
             return BitConverter.ToInt64(longBytes, 0);
         }
-
         /// <summary>
         /// Convert four 16 Bit Registers to 64 Bit Integer value - Registers can be swapped
         /// </summary>
         /// <param name="registers">four Register values received from Modbus</param>
-        /// <param name="registerOrder">Desired Word Order (Low Register first or High Register first</param>
+        /// <param name="registerorder">Desired Word Order (Low Register first or High Register first</param>
         /// <returns>Connected 64 Bit Integer value</returns>
-        public static Int64 ConvertRegistersToLong(int[] registers, RegisterOrder registerOrder)
+        public long ConvertRegistersToLongOrderSelect(ushort[] registers, int registerorder)
         {
             if (registers.Length != 4)
                 throw new ArgumentException("Input Array length invalid - Array langth must be '4'");
-            int[] swappedRegisters = { registers[0], registers[1], registers[2], registers[3] };
-            if (registerOrder == RegisterOrder.HighLow)
-                swappedRegisters = new int[] { registers[3], registers[2], registers[1], registers[0] };
+            ushort[] swappedRegisters = { registers[0], registers[1], registers[2], registers[3] };
+            if (registerorder == 1)
+                swappedRegisters = new ushort[] { registers[3], registers[2], registers[1], registers[0] };
             return ConvertRegistersToLong(swappedRegisters);
         }
-
         /// <summary>
         /// Convert four 16 Bit Registers to 64 Bit double prec. value Register Order "LowHigh": Reg0: Low Word.....Reg3: High Word, "HighLow": Reg0: High Word.....Reg3: Low Word
         /// </summary>
         /// <param name="registers">four Register values received from Modbus</param>
         /// <returns>64 bit value</returns>
-        public static double ConvertRegistersToDouble(int[] registers)
+        public double ConvertRegistersToDouble(ushort[] registers)
         {
             if (registers.Length != 4)
                 throw new ArgumentException("Input Array length invalid - Array langth must be '4'");
@@ -387,75 +405,67 @@ namespace EasyModbus
                                 };
             return BitConverter.ToDouble(longBytes, 0);
         }
-
         /// <summary>
         /// Convert four 16 Bit Registers to 64 Bit double prec. value - Registers can be swapped
         /// </summary>
         /// <param name="registers">four Register values received from Modbus</param>
-        /// <param name="registerOrder">Desired Word Order (Low Register first or High Register first</param>
+        /// <param name="registerorder">Desired Word Order (Low Register first or High Register first</param>
         /// <returns>Connected double prec. float value</returns>
-        public static double ConvertRegistersToDouble(int[] registers, RegisterOrder registerOrder)
+        public double ConvertRegistersToDoubleOrderSelect(ushort[] registers, int registerorder)
         {
             if (registers.Length != 4)
                 throw new ArgumentException("Input Array length invalid - Array langth must be '4'");
-            int[] swappedRegisters = { registers[0], registers[1], registers[2], registers[3] };
-            if (registerOrder == RegisterOrder.HighLow)
-                swappedRegisters = new int[] { registers[3], registers[2], registers[1], registers[0] };
+            ushort[] swappedRegisters = { registers[0], registers[1], registers[2], registers[3] };
+            if (registerorder == 1)
+                swappedRegisters = new ushort[] { registers[3], registers[2], registers[1], registers[0] };
             return ConvertRegistersToDouble(swappedRegisters);
         }
-
         /// <summary>
         /// Converts float to two ModbusRegisters - Example:  modbusClient.WriteMultipleRegisters(24, EasyModbus.ModbusClient.ConvertFloatToTwoRegisters((float)1.22));
         /// </summary>
         /// <param name="floatValue">Float value which has to be converted into two registers</param>
         /// <returns>Register values</returns>
-        public static int[] ConvertFloatToRegisters(float floatValue)
+        public ushort[] ConvertFloatToRegisters(float floatValue)
         {
             byte[] floatBytes = BitConverter.GetBytes(floatValue);
             byte[] highRegisterBytes = 
             {
                 floatBytes[2],
                 floatBytes[3],
-                0,
-                0
             };
             byte[] lowRegisterBytes = 
             {
                 
                 floatBytes[0],
                 floatBytes[1],
-                0,
-                0
             };
-            int[] returnValue =
+            ushort[] returnValue =
             {
-                BitConverter.ToInt32(lowRegisterBytes,0),
-                BitConverter.ToInt32(highRegisterBytes,0)
+                BitConverter.ToUInt16(lowRegisterBytes,0),
+                BitConverter.ToUInt16(highRegisterBytes,0)
             };
             return returnValue;
         }
-
         /// <summary>
         /// Converts float to two ModbusRegisters Registers - Registers can be swapped
         /// </summary>
         /// <param name="floatValue">Float value which has to be converted into two registers</param>
-        /// <param name="registerOrder">Desired Word Order (Low Register first or High Register first</param>
+        /// <param name="registerorder">Desired Word Order (Low Register first or High Register first</param>
         /// <returns>Register values</returns>
-        public static int[] ConvertFloatToRegisters(float floatValue, RegisterOrder registerOrder)
+        public ushort[] ConvertFloatToRegistersOrderSelect(float floatValue, int registerorder)
         {
-            int[] registerValues = ConvertFloatToRegisters(floatValue);
-            int[] returnValue = registerValues;
-            if (registerOrder == RegisterOrder.HighLow)
-                returnValue = new Int32[] { registerValues[1], registerValues[0] };
+            ushort[] registerValues = ConvertFloatToRegisters(floatValue);
+            ushort[] returnValue = registerValues;
+            if (registerorder == 1)
+                returnValue = new ushort[] { registerValues[1], registerValues[0] };
             return returnValue;
         }
-
         /// <summary>
         /// Converts 32 Bit Value to two ModbusRegisters
         /// </summary>
         /// <param name="intValue">Int value which has to be converted into two registers</param>
         /// <returns>Register values</returns>
-        public static int[] ConvertIntToRegisters(Int32 intValue)
+        public ushort[] ConvertIntToRegisters(int intValue)
         {
             byte[] doubleBytes = BitConverter.GetBytes(intValue);
             byte[] highRegisterBytes = 
@@ -473,153 +483,131 @@ namespace EasyModbus
                 0,
                 0
             };
-            int[] returnValue =
+            ushort[] returnValue =
             {
-                BitConverter.ToInt32(lowRegisterBytes,0),
-                BitConverter.ToInt32(highRegisterBytes,0)
+                BitConverter.ToUInt16(lowRegisterBytes,0),
+                BitConverter.ToUInt16(highRegisterBytes,0)
             };
             return returnValue;
         }
-
         /// <summary>
         /// Converts 32 Bit Value to two ModbusRegisters Registers - Registers can be swapped
         /// </summary>
         /// <param name="intValue">Double value which has to be converted into two registers</param>
-        /// <param name="registerOrder">Desired Word Order (Low Register first or High Register first</param>
+        /// <param name="registerorder">Desired Word Order (Low Register first or High Register first</param>
         /// <returns>Register values</returns>
-        public static int[] ConvertIntToRegisters(Int32 intValue, RegisterOrder registerOrder)
+        public ushort[] ConvertIntToRegistersOrderSelect(int intValue, int registerorder)
         {
-            int[] registerValues = ConvertIntToRegisters(intValue);
-            int[] returnValue = registerValues;
-            if (registerOrder == RegisterOrder.HighLow)
-                returnValue = new Int32[] { registerValues[1], registerValues[0] };
+            ushort[] registerValues = ConvertIntToRegisters(intValue);
+            ushort[] returnValue = registerValues;
+            if (registerorder == 1)
+                returnValue = new ushort[] { registerValues[1], registerValues[0] };
             return returnValue;
         }
-
         /// <summary>
         /// Converts 64 Bit Value to four ModbusRegisters
         /// </summary>
         /// <param name="longValue">long value which has to be converted into four registers</param>
         /// <returns>Register values</returns>
-        public static int[] ConvertLongToRegisters(Int64 longValue)
+        public ushort[] ConvertLongToRegisters(long longValue)
         {
             byte[] longBytes = BitConverter.GetBytes(longValue);
             byte[] highRegisterBytes =
             {
                 longBytes[6],
                 longBytes[7],
-                0,
-                0
             };
             byte[] highLowRegisterBytes =
             {
                 longBytes[4],
                 longBytes[5],
-                0,
-                0
             };
             byte[] lowHighRegisterBytes =
             {
                 longBytes[2],
                 longBytes[3],
-                0,
-                0
             };
             byte[] lowRegisterBytes =
             {
 
                 longBytes[0],
                 longBytes[1],
-                0,
-                0
             };
-            int[] returnValue =
+            ushort[] returnValue =
             {
-                BitConverter.ToInt32(lowRegisterBytes,0),
-                BitConverter.ToInt32(lowHighRegisterBytes,0),
-                BitConverter.ToInt32(highLowRegisterBytes,0),
-                BitConverter.ToInt32(highRegisterBytes,0)
+                BitConverter.ToUInt16(lowRegisterBytes,0),
+                BitConverter.ToUInt16(lowHighRegisterBytes,0),
+                BitConverter.ToUInt16(highLowRegisterBytes,0),
+                BitConverter.ToUInt16(highRegisterBytes,0)
             };
             return returnValue;
         }
-
         /// <summary>
         /// Converts 64 Bit Value to four ModbusRegisters - Registers can be swapped
         /// </summary>
         /// <param name="longValue">long value which has to be converted into four registers</param>
-        /// <param name="registerOrder">Desired Word Order (Low Register first or High Register first</param>
+        /// <param name="registerorder">Desired Word Order (Low Register first or High Register first</param>
         /// <returns>Register values</returns>
-        public static int[] ConvertLongToRegisters(Int64 longValue, RegisterOrder registerOrder)
+        public ushort[] ConvertLongToRegistersOrderSelect(long longValue, int registerorder)
         {
-            int[] registerValues = ConvertLongToRegisters(longValue);
-            int[] returnValue = registerValues;
-            if (registerOrder == RegisterOrder.HighLow)
-                returnValue = new int[] { registerValues[3], registerValues[2], registerValues[1], registerValues[0] };
+            ushort[] registerValues = ConvertLongToRegisters(longValue);
+            ushort[] returnValue = registerValues;
+            if (registerorder == 1)
+                returnValue = new ushort[] { registerValues[3], registerValues[2], registerValues[1], registerValues[0] };
             return returnValue;
         }
-
         /// <summary>
         /// Converts 64 Bit double prec Value to four ModbusRegisters
         /// </summary>
         /// <param name="doubleValue">double value which has to be converted into four registers</param>
         /// <returns>Register values</returns>
-        public static int[] ConvertDoubleToRegisters(double doubleValue)
+        public ushort[] ConvertDoubleToRegisters(double doubleValue)
         {
             byte[] doubleBytes = BitConverter.GetBytes(doubleValue);
             byte[] highRegisterBytes =
             {
                 doubleBytes[6],
                 doubleBytes[7],
-                0,
-                0
             };
             byte[] highLowRegisterBytes =
             {
                 doubleBytes[4],
                 doubleBytes[5],
-                0,
-                0
             };
             byte[] lowHighRegisterBytes =
             {
                 doubleBytes[2],
                 doubleBytes[3],
-                0,
-                0
             };
             byte[] lowRegisterBytes =
             {
 
                 doubleBytes[0],
                 doubleBytes[1],
-                0,
-                0
             };
-            int[] returnValue =
+            ushort[] returnValue =
             {
-                BitConverter.ToInt32(lowRegisterBytes,0),
-                BitConverter.ToInt32(lowHighRegisterBytes,0),
-                BitConverter.ToInt32(highLowRegisterBytes,0),
-                BitConverter.ToInt32(highRegisterBytes,0)
+                BitConverter.ToUInt16(lowRegisterBytes,0),
+                BitConverter.ToUInt16(lowHighRegisterBytes,0),
+                BitConverter.ToUInt16(highLowRegisterBytes,0),
+                BitConverter.ToUInt16(highRegisterBytes,0)
             };
             return returnValue;
         }
-
         /// <summary>
         /// Converts 64 Bit double prec. Value to four ModbusRegisters - Registers can be swapped
         /// </summary>
         /// <param name="doubleValue">double value which has to be converted into four registers</param>
-        /// <param name="registerOrder">Desired Word Order (Low Register first or High Register first</param>
+        /// <param name="registerorder">Desired Word Order (Low Register first or High Register first</param>
         /// <returns>Register values</returns>
-        public static int[] ConvertDoubleToRegisters(double doubleValue, RegisterOrder registerOrder)
+        public ushort[] ConvertDoubleToRegistersOrderSelect(double doubleValue, int registerorder)
         {
-            int[] registerValues = ConvertDoubleToRegisters(doubleValue);
-            int[] returnValue = registerValues;
-            if (registerOrder == RegisterOrder.HighLow)
-                returnValue = new int[] { registerValues[3], registerValues[2], registerValues[1], registerValues[0] };
+            ushort[] registerValues = ConvertDoubleToRegisters(doubleValue);
+            ushort[] returnValue = registerValues;
+            if (registerorder == 1)
+                returnValue = new ushort[] { registerValues[3], registerValues[2], registerValues[1], registerValues[0] };
             return returnValue;
         }
-
         /// <summary>
         /// Converts 16 - Bit Register values to String
         /// </summary>
@@ -627,7 +615,7 @@ namespace EasyModbus
         /// <param name="offset">First Register containing the String to convert</param>
         /// <param name="stringLength">number of characters in String (must be even)</param>
         /// <returns>Converted String</returns>
-        public static string ConvertRegistersToString(int[] registers, int offset, int stringLength)
+        public string ConvertRegistersToString(ushort[] registers, int offset, int stringLength)
         { 
         byte[] result = new byte[stringLength];
         byte[] registerResult = new byte[2];
@@ -640,35 +628,37 @@ namespace EasyModbus
             }
             return System.Text.Encoding.Default.GetString(result);
         }
-
         /// <summary>
         /// Converts a String to 16 - Bit Registers
         /// </summary>
         /// <param name="registers">Register array received via Modbus</param>
         /// <returns>Converted String</returns>
-        public static int[] ConvertStringToRegisters(string stringToConvert)
+        public ushort[] ConvertStringToRegisters(string stringToConvert)
         {
             byte[] array = System.Text.Encoding.ASCII.GetBytes(stringToConvert);
             int[] returnarray = new int[stringToConvert.Length / 2 + stringToConvert.Length % 2];
+            ushort[] returnarrayUshort = new ushort[stringToConvert.Length / 2 + stringToConvert.Length % 2];
             for (int i = 0; i < returnarray.Length; i++)
             {
                 returnarray[i] = array[i * 2];
                 if (i*2 +1< array.Length)
                 {
-                    returnarray[i] = returnarray[i] | ((int)array[i * 2 + 1] << 8);
+                    returnarray[i] = returnarray[i] | (array[i * 2 + 1] << 8);
                 }
             }
-            return returnarray;
+            for (int i = 0; i < returnarray.Length; i++)
+            {
+                returnarrayUshort[i] = (ushort)returnarray[i];
+            }
+            return returnarrayUshort;
         }
-
-
         /// <summary>
         /// Calculates the CRC16 for Modbus-RTU
         /// </summary>
         /// <param name="data">Byte buffer to send</param>
         /// <param name="numberOfBytes">Number of bytes to calculate CRC</param>
         /// <param name="startByte">First byte in buffer to start calculating CRC</param>
-        public UInt16 calculateCRC(byte[] data, UInt16 numberOfBytes, int startByte)
+        public ushort CalculateCRC(byte[] data, ushort numberOfBytes, int startByte)
         { 
             byte[] auchCRCHi = {
             0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81,
@@ -711,7 +701,7 @@ namespace EasyModbus
             0x44, 0x84, 0x85, 0x45, 0x87, 0x47, 0x46, 0x86, 0x82, 0x42, 0x43, 0x83, 0x41, 0x81, 0x80,
             0x40
             };
-            UInt16 usDataLen = numberOfBytes;
+            ushort usDataLen = numberOfBytes;
             byte  uchCRCHi = 0xFF ; 
             byte uchCRCLo = 0xFF ; 
             int i = 0;
@@ -727,7 +717,7 @@ namespace EasyModbus
                 }
                 i++;
             }
-            return (UInt16)((UInt16)uchCRCHi << 8 | uchCRCLo);           
+            return (ushort)((ushort)uchCRCHi << 8 | uchCRCLo);           
         }
 
         private bool dataReceived = false;
@@ -779,8 +769,6 @@ namespace EasyModbus
             //dateTimeLastRead = DateTime.Now;
         }
  */       
-
-        
         private void DataReceivedHandler(object sender,
                         SerialDataReceivedEventArgs e)
         {
@@ -821,7 +809,7 @@ namespace EasyModbus
             	sp.Read(rxbytearray, 0, numbytes);
                 Array.Copy(rxbytearray,0, readBuffer,actualPositionToRead, (actualPositionToRead + rxbytearray.Length) <= bytesToRead ? rxbytearray.Length : bytesToRead - actualPositionToRead); 
             	
-            	actualPositionToRead = actualPositionToRead + rxbytearray.Length;
+            	actualPositionToRead += rxbytearray.Length;
             	
             	}
             	catch (Exception){
@@ -849,16 +837,11 @@ namespace EasyModbus
             dataReceived = true;
             receiveActive = false;
             serialport.DataReceived += new SerialDataReceivedEventHandler(DataReceivedHandler);
-            if (ReceiveDataChanged != null)
-            {
 
-                ReceiveDataChanged(this);
+            ReceiveDataChanged?.Invoke(this);
 
-            }
-            
             //sp.DiscardInBuffer();
         }
-
         public bool DetectValidModbusFrame(byte[] readBuffer, int length)
         {
         	// minimum length 6 bytes
@@ -869,14 +852,11 @@ namespace EasyModbus
         		return false;
             //CRC correct?
             byte[] crc = new byte[2];
-            crc = BitConverter.GetBytes(calculateCRC(readBuffer, (ushort)(length-2), 0));
+            crc = BitConverter.GetBytes(CalculateCRC(readBuffer, (ushort)(length-2), 0));
                 if (crc[0] != readBuffer[length-2] | crc[1] != readBuffer[length-1])
                 	return false;
             return true;
         }
-
-
-
         /// <summary>
         /// Read Discrete Inputs from Server device (FC2).
         /// </summary>
@@ -891,12 +871,12 @@ namespace EasyModbus
                 if (!serialport.IsOpen)
             	{
             		if (debug) StoreLogData.Instance.Store("SerialPortNotOpenedException Thrown", System.DateTime.Now);
-                    throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                    throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
             	}
 			if (tcpClient == null & !udpFlag & serialport==null)
 			{
 				if (debug) StoreLogData.Instance.Store("ConnectionException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.ConnectionException("connection error");
+                throw new XojoEasyModbus.Exceptions.ConnectionException("connection error");
 			}
 			if (startingAddress > 65535 | quantity >2000)
 			{
@@ -927,7 +907,7 @@ namespace EasyModbus
                             this.crc[0],
                             this.crc[1]
                             };
-                crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));
+                crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));
                 data[12] = crc[0];
                 data[13] = crc[1];
 
@@ -1013,33 +993,33 @@ namespace EasyModbus
             if (data[7] == 0x82 & data[8] == 0x01)
             {
             	if (debug) StoreLogData.Instance.Store("FunctionCodeNotSupportedException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.FunctionCodeNotSupportedException("Function code not supported by master");
+                throw new XojoEasyModbus.Exceptions.FunctionCodeNotSupportedException("Function code not supported by master");
             }
             if (data[7] == 0x82 & data[8] == 0x02)
             {
             	if (debug) StoreLogData.Instance.Store("StartingAddressInvalidException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.StartingAddressInvalidException("Starting address invalid or starting address + quantity invalid");
+                throw new XojoEasyModbus.Exceptions.StartingAddressInvalidException("Starting address invalid or starting address + quantity invalid");
             }
             if (data[7] == 0x82 & data[8] == 0x03)
             {
             	if (debug) StoreLogData.Instance.Store("QuantityInvalidException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.QuantityInvalidException("quantity invalid");
+                throw new XojoEasyModbus.Exceptions.QuantityInvalidException("quantity invalid");
             }
             if (data[7] == 0x82 & data[8] == 0x04)
             {
             	if (debug) StoreLogData.Instance.Store("ModbusException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.ModbusException("error reading");
+                throw new XojoEasyModbus.Exceptions.ModbusException("error reading");
             }
             if (serialport != null)
             {
-            crc = BitConverter.GetBytes(calculateCRC(data, (ushort)(data[8]+3), 6));
+            crc = BitConverter.GetBytes(CalculateCRC(data, (ushort)(data[8]+3), 6));
                 if ((crc[0] != data[data[8] + 9] | crc[1] != data[data[8] + 10]) & dataReceived)
                 {
                 	if (debug) StoreLogData.Instance.Store("CRCCheckFailedException Thrown", System.DateTime.Now);
                     if (NumberOfRetries <= countRetries)
                     {
                         countRetries = 0;
-                        throw new EasyModbus.Exceptions.CRCCheckFailedException("Response CRC check failed");
+                        throw new XojoEasyModbus.Exceptions.CRCCheckFailedException("Response CRC check failed");
                     }
                     else
                     {
@@ -1071,8 +1051,6 @@ namespace EasyModbus
 			}    		
     		return (response);
 		}
-
-
         /// <summary>
         /// Read Coils from Server device (FC1).
         /// </summary>
@@ -1087,12 +1065,12 @@ namespace EasyModbus
                 if (!serialport.IsOpen)
             	{
             		if (debug) StoreLogData.Instance.Store("SerialPortNotOpenedException Thrown", System.DateTime.Now);
-                    throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                    throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
             	}
             if (tcpClient == null & !udpFlag & serialport == null)
             {
 				if (debug) StoreLogData.Instance.Store("ConnectionException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.ConnectionException("connection error");
+                throw new XojoEasyModbus.Exceptions.ConnectionException("connection error");
 			}
 			if (startingAddress > 65535 | quantity >2000)
 			{
@@ -1123,7 +1101,7 @@ namespace EasyModbus
                             this.crc[1]
             };
 
-            crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));
+            crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));
            data[12] = crc[0];
                 data[13] = crc[1];
             if (serialport != null)
@@ -1208,33 +1186,33 @@ namespace EasyModbus
             if (data[7] == 0x81 & data[8] == 0x01)
             {
             	if (debug) StoreLogData.Instance.Store("FunctionCodeNotSupportedException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.FunctionCodeNotSupportedException("Function code not supported by master");
+                throw new XojoEasyModbus.Exceptions.FunctionCodeNotSupportedException("Function code not supported by master");
             }
             if (data[7] == 0x81 & data[8] == 0x02)
            {
             	if (debug) StoreLogData.Instance.Store("StartingAddressInvalidException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.StartingAddressInvalidException("Starting address invalid or starting address + quantity invalid");
+                throw new XojoEasyModbus.Exceptions.StartingAddressInvalidException("Starting address invalid or starting address + quantity invalid");
             }
             if (data[7] == 0x81 & data[8] == 0x03)
             {
             	if (debug) StoreLogData.Instance.Store("QuantityInvalidException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.QuantityInvalidException("quantity invalid");
+                throw new XojoEasyModbus.Exceptions.QuantityInvalidException("quantity invalid");
             }
             if (data[7] == 0x81 & data[8] == 0x04)
             {
             	if (debug) StoreLogData.Instance.Store("ModbusException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.ModbusException("error reading");
+                throw new XojoEasyModbus.Exceptions.ModbusException("error reading");
             }
             if (serialport != null)
             {
-            crc = BitConverter.GetBytes(calculateCRC(data, (ushort)(data[8]+3), 6));
+            crc = BitConverter.GetBytes(CalculateCRC(data, (ushort)(data[8]+3), 6));
                 if ((crc[0] != data[data[8]+9] | crc[1] != data[data[8]+10]) & dataReceived)
                 {
                 	if (debug) StoreLogData.Instance.Store("CRCCheckFailedException Thrown", System.DateTime.Now);
                     if (NumberOfRetries <= countRetries)
                     {
                         countRetries = 0;
-                        throw new EasyModbus.Exceptions.CRCCheckFailedException("Response CRC check failed");
+                        throw new XojoEasyModbus.Exceptions.CRCCheckFailedException("Response CRC check failed");
                     }
                     else
                     {
@@ -1266,15 +1244,13 @@ namespace EasyModbus
 			}   		
     		return (response);
 		}
-
-
         /// <summary>
         /// Read Holding Registers from Master device (FC3).
         /// </summary>
         /// <param name="startingAddress">First holding register to be read</param>
         /// <param name="quantity">Number of holding registers to be read</param>
         /// <returns>Int Array which contains the holding registers</returns>
-        public int[] ReadHoldingRegisters(int startingAddress, int quantity)
+        public ushort[] ReadHoldingRegisters(int startingAddress, int quantity)
 		{
             if (debug) StoreLogData.Instance.Store("FC3 (Read Holding Registers from Master device), StartingAddress: "+ startingAddress+", Quantity: " +quantity, System.DateTime.Now);
             transactionIdentifierInternal++;
@@ -1282,19 +1258,19 @@ namespace EasyModbus
                 if (!serialport.IsOpen)
             	{
             		if (debug) StoreLogData.Instance.Store("SerialPortNotOpenedException Thrown", System.DateTime.Now);
-                    throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                    throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
             	}
             if (tcpClient == null & !udpFlag & serialport == null)
             {
 				if (debug) StoreLogData.Instance.Store("ConnectionException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.ConnectionException("connection error");
+                throw new XojoEasyModbus.Exceptions.ConnectionException("connection error");
 			}
 			if (startingAddress > 65535 | quantity >125)
 			{
 				if (debug) StoreLogData.Instance.Store("ArgumentException Thrown", System.DateTime.Now);
 				throw new ArgumentException("Starting address must be 0 - 65535; quantity must be 0 - 125");
 			}
-			int[] response;
+			ushort[] response;
 			this.transactionIdentifier = BitConverter.GetBytes((uint)transactionIdentifierInternal);
 			this.protocolIdentifier = BitConverter.GetBytes((int) 0x0000);
 			this.length = BitConverter.GetBytes((int)0x0006);
@@ -1316,7 +1292,7 @@ namespace EasyModbus
                             this.crc[0],
                             this.crc[1]
             };
-            crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));
+            crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));
             data[12] = crc[0];
             data[13] = crc[1];
             if (serialport != null)
@@ -1399,33 +1375,33 @@ namespace EasyModbus
             if (data[7] == 0x83 & data[8] == 0x01)
             {
             	if (debug) StoreLogData.Instance.Store("FunctionCodeNotSupportedException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.FunctionCodeNotSupportedException("Function code not supported by master");
+                throw new XojoEasyModbus.Exceptions.FunctionCodeNotSupportedException("Function code not supported by master");
             }
             if (data[7] == 0x83 & data[8] == 0x02)
             {
             	if (debug) StoreLogData.Instance.Store("StartingAddressInvalidException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.StartingAddressInvalidException("Starting address invalid or starting address + quantity invalid");
+                throw new XojoEasyModbus.Exceptions.StartingAddressInvalidException("Starting address invalid or starting address + quantity invalid");
             }
             if (data[7] == 0x83 & data[8] == 0x03)
             {
             	if (debug) StoreLogData.Instance.Store("QuantityInvalidException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.QuantityInvalidException("quantity invalid");
+                throw new XojoEasyModbus.Exceptions.QuantityInvalidException("quantity invalid");
             }
             if (data[7] == 0x83 & data[8] == 0x04)
             {
             	if (debug) StoreLogData.Instance.Store("ModbusException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.ModbusException("error reading");
+                throw new XojoEasyModbus.Exceptions.ModbusException("error reading");
             }
             if (serialport != null)
             {
-            crc = BitConverter.GetBytes(calculateCRC(data, (ushort)(data[8]+3), 6));
+            crc = BitConverter.GetBytes(CalculateCRC(data, (ushort)(data[8]+3), 6));
                 if ((crc[0] != data[data[8]+9] | crc[1] != data[data[8]+10])& dataReceived)
                 {
                 	if (debug) StoreLogData.Instance.Store("CRCCheckFailedException Thrown", System.DateTime.Now);
                     if (NumberOfRetries <= countRetries)
                     {
                         countRetries = 0;
-                        throw new EasyModbus.Exceptions.CRCCheckFailedException("Response CRC check failed");
+                        throw new XojoEasyModbus.Exceptions.CRCCheckFailedException("Response CRC check failed");
                     }
                     else
                     {
@@ -1450,7 +1426,7 @@ namespace EasyModbus
 
                 }
             }
-			response = new int[quantity];
+			response = new ushort[quantity];
 			for (int i = 0; i < quantity; i++)
 			{
 				byte lowByte;
@@ -1461,20 +1437,17 @@ namespace EasyModbus
 				data[9+i*2] = lowByte;
 				data[9+i*2+1] = highByte;
 				
-				response[i] = BitConverter.ToInt16(data,(9+i*2));
+				response[i] = BitConverter.ToUInt16(data,(9+i*2));
 			}			
     		return (response);			
 		}
-
-
-
         /// <summary>
         /// Read Input Registers from Master device (FC4).
         /// </summary>
         /// <param name="startingAddress">First input register to be read</param>
         /// <param name="quantity">Number of input registers to be read</param>
         /// <returns>Int Array which contains the input registers</returns>
-        public int[] ReadInputRegisters(int startingAddress, int quantity)
+        public ushort[] ReadInputRegisters(int startingAddress, int quantity)
 		{
             
             if (debug) StoreLogData.Instance.Store("FC4 (Read Input Registers from Master device), StartingAddress: "+ startingAddress+", Quantity: " +quantity, System.DateTime.Now);
@@ -1483,19 +1456,19 @@ namespace EasyModbus
                 if (!serialport.IsOpen)
             	{
             		if (debug) StoreLogData.Instance.Store("SerialPortNotOpenedException Thrown", System.DateTime.Now);
-                    throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                    throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
             	}
             if (tcpClient == null & !udpFlag & serialport == null)
             {
 				if (debug) StoreLogData.Instance.Store("ConnectionException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.ConnectionException("connection error");
+                throw new XojoEasyModbus.Exceptions.ConnectionException("connection error");
 			}
 			if (startingAddress > 65535 | quantity >125)
 			{
 				if (debug) StoreLogData.Instance.Store("ArgumentException Thrown", System.DateTime.Now);
 				throw new ArgumentException("Starting address must be 0 - 65535; quantity must be 0 - 125");
 			}
-			int[] response;
+			ushort[] response;
 			this.transactionIdentifier = BitConverter.GetBytes((uint)transactionIdentifierInternal);
 			this.protocolIdentifier = BitConverter.GetBytes((int) 0x0000);
 			this.length = BitConverter.GetBytes((int)0x0006);
@@ -1517,7 +1490,7 @@ namespace EasyModbus
                             this.crc[0],
                             this.crc[1]        
             };
-            crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));
+            crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));
             data[12] = crc[0];
             data[13] = crc[1];
             if (serialport != null)
@@ -1601,33 +1574,33 @@ namespace EasyModbus
             if (data[7] == 0x84 & data[8] == 0x01)
             {
             	if (debug) StoreLogData.Instance.Store("FunctionCodeNotSupportedException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.FunctionCodeNotSupportedException("Function code not supported by master");
+                throw new XojoEasyModbus.Exceptions.FunctionCodeNotSupportedException("Function code not supported by master");
             }
             if (data[7] == 0x84 & data[8] == 0x02)
             {
             	if (debug) StoreLogData.Instance.Store("StartingAddressInvalidException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.StartingAddressInvalidException("Starting address invalid or starting address + quantity invalid");
+                throw new XojoEasyModbus.Exceptions.StartingAddressInvalidException("Starting address invalid or starting address + quantity invalid");
             }
             if (data[7] == 0x84 & data[8] == 0x03)
             {
             	if (debug) StoreLogData.Instance.Store("QuantityInvalidException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.QuantityInvalidException("quantity invalid");
+                throw new XojoEasyModbus.Exceptions.QuantityInvalidException("quantity invalid");
             }
             if (data[7] == 0x84 & data[8] == 0x04)
             {
             	if (debug) StoreLogData.Instance.Store("ModbusException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.ModbusException("error reading");
+                throw new XojoEasyModbus.Exceptions.ModbusException("error reading");
             }
             if (serialport != null)
             {
-            crc = BitConverter.GetBytes(calculateCRC(data, (ushort)(data[8]+3), 6));
+            crc = BitConverter.GetBytes(CalculateCRC(data, (ushort)(data[8]+3), 6));
                 if ((crc[0] != data[data[8]+9] | crc[1] != data[data[8]+10]) & dataReceived)
                 {
                 	if (debug) StoreLogData.Instance.Store("CRCCheckFailedException Thrown", System.DateTime.Now);
                     if (NumberOfRetries <= countRetries)
                     {
                         countRetries = 0;
-                        throw new EasyModbus.Exceptions.CRCCheckFailedException("Response CRC check failed");
+                        throw new XojoEasyModbus.Exceptions.CRCCheckFailedException("Response CRC check failed");
                     }
                     else
                     {
@@ -1652,7 +1625,7 @@ namespace EasyModbus
                     
                 }
             }
-			response = new int[quantity];
+			response = new ushort[quantity];
 			for (int i = 0; i < quantity; i++)
 			{
 				byte lowByte;
@@ -1663,12 +1636,10 @@ namespace EasyModbus
 				data[9+i*2] = lowByte;
 				data[9+i*2+1] = highByte;
 				
-				response[i] = BitConverter.ToInt16(data,(9+i*2));
+				response[i] = BitConverter.ToUInt16(data,(9+i*2));
 			}
     		return (response);
 		}
-	
-	
 		/// <summary>
 		/// Write single Coil to Master device (FC5).
 		/// </summary>
@@ -1683,12 +1654,12 @@ namespace EasyModbus
                 if (!serialport.IsOpen)
             	{
             		if (debug) StoreLogData.Instance.Store("SerialPortNotOpenedException Thrown", System.DateTime.Now);
-                    throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                    throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
             	}
             if (tcpClient == null & !udpFlag & serialport == null)
             {
 				if (debug) StoreLogData.Instance.Store("ConnectionException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.ConnectionException("connection error");
+                throw new XojoEasyModbus.Exceptions.ConnectionException("connection error");
 			}
             byte[] coilValue = new byte[2];
             this.transactionIdentifier = BitConverter.GetBytes((uint)transactionIdentifierInternal);
@@ -1719,7 +1690,7 @@ namespace EasyModbus
                             this.crc[0],
                             this.crc[1]    
                             };
-            crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));
+            crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));
             data[12] = crc[0];
             data[13] = crc[1];
             if (serialport != null)
@@ -1798,33 +1769,33 @@ namespace EasyModbus
             if (data[7] == 0x85 & data[8] == 0x01)
             {
             	if (debug) StoreLogData.Instance.Store("FunctionCodeNotSupportedException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.FunctionCodeNotSupportedException("Function code not supported by master");
+                throw new XojoEasyModbus.Exceptions.FunctionCodeNotSupportedException("Function code not supported by master");
             }
             if (data[7] == 0x85 & data[8] == 0x02)
             {
             	if (debug) StoreLogData.Instance.Store("StartingAddressInvalidException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.StartingAddressInvalidException("Starting address invalid or starting address + quantity invalid");
+                throw new XojoEasyModbus.Exceptions.StartingAddressInvalidException("Starting address invalid or starting address + quantity invalid");
             }
             if (data[7] == 0x85 & data[8] == 0x03)
             {
             	if (debug) StoreLogData.Instance.Store("QuantityInvalidException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.QuantityInvalidException("quantity invalid");
+                throw new XojoEasyModbus.Exceptions.QuantityInvalidException("quantity invalid");
             }
             if (data[7] == 0x85 & data[8] == 0x04)
             {
             	if (debug) StoreLogData.Instance.Store("ModbusException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.ModbusException("error reading");
+                throw new XojoEasyModbus.Exceptions.ModbusException("error reading");
             }
             if (serialport != null)
             {
-             crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));           
+             crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));           
                 if ((crc[0] != data[12] | crc[1] != data[13]) & dataReceived)
                 {
                 	if (debug) StoreLogData.Instance.Store("CRCCheckFailedException Thrown", System.DateTime.Now);
                     if (NumberOfRetries <= countRetries)
                     {
                         countRetries = 0;
-                        throw new EasyModbus.Exceptions.CRCCheckFailedException("Response CRC check failed");
+                        throw new XojoEasyModbus.Exceptions.CRCCheckFailedException("Response CRC check failed");
                     }
                     else
                     {
@@ -1849,8 +1820,6 @@ namespace EasyModbus
                 }
             }
         }
-
-
         /// <summary>
         /// Write single Register to Master device (FC6).
         /// </summary>
@@ -1864,12 +1833,12 @@ namespace EasyModbus
                 if (!serialport.IsOpen)
             	{
             		if (debug) StoreLogData.Instance.Store("SerialPortNotOpenedException Thrown", System.DateTime.Now);
-                    throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                    throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
             	}
             if (tcpClient == null & !udpFlag & serialport == null)
             {
 				if (debug) StoreLogData.Instance.Store("ConnectionException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.ConnectionException("connection error");
+                throw new XojoEasyModbus.Exceptions.ConnectionException("connection error");
 			}
             byte[] registerValue = new byte[2];
             this.transactionIdentifier = BitConverter.GetBytes((uint)transactionIdentifierInternal);
@@ -1894,7 +1863,7 @@ namespace EasyModbus
                             this.crc[0],
                             this.crc[1]    
                             };
-            crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));
+            crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));
             data[12] = crc[0];
             data[13] = crc[1];
             if (serialport != null)
@@ -1975,33 +1944,33 @@ namespace EasyModbus
             if (data[7] == 0x86 & data[8] == 0x01)
             {
             	if (debug) StoreLogData.Instance.Store("FunctionCodeNotSupportedException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.FunctionCodeNotSupportedException("Function code not supported by master");
+                throw new XojoEasyModbus.Exceptions.FunctionCodeNotSupportedException("Function code not supported by master");
             }
             if (data[7] == 0x86 & data[8] == 0x02)
             {
             	if (debug) StoreLogData.Instance.Store("StartingAddressInvalidException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.StartingAddressInvalidException("Starting address invalid or starting address + quantity invalid");
+                throw new XojoEasyModbus.Exceptions.StartingAddressInvalidException("Starting address invalid or starting address + quantity invalid");
             }
             if (data[7] == 0x86 & data[8] == 0x03)
             {
             	if (debug) StoreLogData.Instance.Store("QuantityInvalidException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.QuantityInvalidException("quantity invalid");
+                throw new XojoEasyModbus.Exceptions.QuantityInvalidException("quantity invalid");
             }
             if (data[7] == 0x86 & data[8] == 0x04)
             {
             	if (debug) StoreLogData.Instance.Store("ModbusException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.ModbusException("error reading");
+                throw new XojoEasyModbus.Exceptions.ModbusException("error reading");
             }
             if (serialport != null)
             {
-             crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));           
+             crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));           
                 if ((crc[0] != data[12] | crc[1] != data[13]) & dataReceived)
                 {
                     if (debug) StoreLogData.Instance.Store("CRCCheckFailedException Thrown", System.DateTime.Now);
                     if (NumberOfRetries <= countRetries)
                     {
                          countRetries = 0;
-                         throw new EasyModbus.Exceptions.CRCCheckFailedException("Response CRC check failed");
+                         throw new XojoEasyModbus.Exceptions.CRCCheckFailedException("Response CRC check failed");
                     }
                     else
                     {
@@ -2026,7 +1995,6 @@ namespace EasyModbus
                 }
             }
         }
-
         /// <summary>
         /// Write multiple coils to Master device (FC15).
         /// </summary>
@@ -2046,12 +2014,12 @@ namespace EasyModbus
                 if (!serialport.IsOpen)
             	{
             		if (debug) StoreLogData.Instance.Store("SerialPortNotOpenedException Thrown", System.DateTime.Now);
-                    throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                    throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
             	}
             if (tcpClient == null & !udpFlag & serialport == null)
             {
 				if (debug) StoreLogData.Instance.Store("ConnectionException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.ConnectionException("connection error");
+                throw new XojoEasyModbus.Exceptions.ConnectionException("connection error");
 			}
             this.transactionIdentifier = BitConverter.GetBytes((uint)transactionIdentifierInternal);
             this.protocolIdentifier = BitConverter.GetBytes((int)0x0000);
@@ -2090,7 +2058,7 @@ namespace EasyModbus
 
                 data[13 + (i / 8)] = singleCoilValue;            
             }
-            crc = BitConverter.GetBytes(calculateCRC(data, (ushort)(data.Length - 8), 6));
+            crc = BitConverter.GetBytes(CalculateCRC(data, (ushort)(data.Length - 8), 6));
             data[data.Length - 2] = crc[0];
             data[data.Length - 1] = crc[1];
             if (serialport != null)
@@ -2171,33 +2139,33 @@ namespace EasyModbus
             if (data[7] == 0x8F & data[8] == 0x01)
             {
             	if (debug) StoreLogData.Instance.Store("FunctionCodeNotSupportedException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.FunctionCodeNotSupportedException("Function code not supported by master");
+                throw new XojoEasyModbus.Exceptions.FunctionCodeNotSupportedException("Function code not supported by master");
             }
             if (data[7] == 0x8F & data[8] == 0x02)
             {
             	if (debug) StoreLogData.Instance.Store("StartingAddressInvalidException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.StartingAddressInvalidException("Starting address invalid or starting address + quantity invalid");
+                throw new XojoEasyModbus.Exceptions.StartingAddressInvalidException("Starting address invalid or starting address + quantity invalid");
             }
             if (data[7] == 0x8F & data[8] == 0x03)
             {
             	if (debug) StoreLogData.Instance.Store("QuantityInvalidException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.QuantityInvalidException("quantity invalid");
+                throw new XojoEasyModbus.Exceptions.QuantityInvalidException("quantity invalid");
             }
             if (data[7] == 0x8F & data[8] == 0x04)
             {
             	if (debug) StoreLogData.Instance.Store("ModbusException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.ModbusException("error reading");
+                throw new XojoEasyModbus.Exceptions.ModbusException("error reading");
             }
             if (serialport != null)
             {
-             crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));           
+             crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));           
                 if ((crc[0] != data[12] | crc[1] != data[13]) & dataReceived)
                 {
                 if (debug) StoreLogData.Instance.Store("CRCCheckFailedException Thrown", System.DateTime.Now);
                     if (NumberOfRetries <= countRetries)
                     {
                         countRetries = 0;
-                        throw new EasyModbus.Exceptions.CRCCheckFailedException("Response CRC check failed");
+                        throw new XojoEasyModbus.Exceptions.CRCCheckFailedException("Response CRC check failed");
                     }
                     else
                     {
@@ -2222,7 +2190,6 @@ namespace EasyModbus
                 }
             }
         }
-
         /// <summary>
         /// Write multiple registers to Master device (FC16).
         /// </summary>
@@ -2241,12 +2208,12 @@ namespace EasyModbus
                 if (!serialport.IsOpen)
             	{
             		if (debug) StoreLogData.Instance.Store("SerialPortNotOpenedException Thrown", System.DateTime.Now);
-                    throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                    throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
             	}
             if (tcpClient == null & !udpFlag & serialport == null)
             {
 				if (debug) StoreLogData.Instance.Store("ConnectionException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.ConnectionException("connection error");
+                throw new XojoEasyModbus.Exceptions.ConnectionException("connection error");
 			}
             this.transactionIdentifier = BitConverter.GetBytes((uint)transactionIdentifierInternal);
             this.protocolIdentifier = BitConverter.GetBytes((int)0x0000);
@@ -2274,7 +2241,7 @@ namespace EasyModbus
                 data[13 + i*2] = singleRegisterValue[1];
                 data[14 + i*2] = singleRegisterValue[0];
             }
-            crc = BitConverter.GetBytes(calculateCRC(data, (ushort)(data.Length - 8), 6));
+            crc = BitConverter.GetBytes(CalculateCRC(data, (ushort)(data.Length - 8), 6));
             data[data.Length - 2] = crc[0];
             data[data.Length - 1] = crc[1];
             if (serialport != null)
@@ -2355,33 +2322,33 @@ namespace EasyModbus
             if (data[7] == 0x90 & data[8] == 0x01)
             {
             	if (debug) StoreLogData.Instance.Store("FunctionCodeNotSupportedException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.FunctionCodeNotSupportedException("Function code not supported by master");
+                throw new XojoEasyModbus.Exceptions.FunctionCodeNotSupportedException("Function code not supported by master");
             }
             if (data[7] == 0x90 & data[8] == 0x02)
             {
             	if (debug) StoreLogData.Instance.Store("StartingAddressInvalidException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.StartingAddressInvalidException("Starting address invalid or starting address + quantity invalid");
+                throw new XojoEasyModbus.Exceptions.StartingAddressInvalidException("Starting address invalid or starting address + quantity invalid");
             }
             if (data[7] == 0x90 & data[8] == 0x03)
             {
             	if (debug) StoreLogData.Instance.Store("QuantityInvalidException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.QuantityInvalidException("quantity invalid");
+                throw new XojoEasyModbus.Exceptions.QuantityInvalidException("quantity invalid");
             }
             if (data[7] == 0x90 & data[8] == 0x04)
             {
             	if (debug) StoreLogData.Instance.Store("ModbusException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.ModbusException("error reading");
+                throw new XojoEasyModbus.Exceptions.ModbusException("error reading");
             }
             if (serialport != null)
             {
-             crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));           
+             crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));           
                 if ((crc[0] != data[12] | crc[1] != data[13])  &dataReceived)
                 {
                 if (debug) StoreLogData.Instance.Store("CRCCheckFailedException Thrown", System.DateTime.Now);
                     if (NumberOfRetries <= countRetries)
                     {
                         countRetries = 0;
-                        throw new EasyModbus.Exceptions.CRCCheckFailedException("Response CRC check failed");
+                        throw new XojoEasyModbus.Exceptions.CRCCheckFailedException("Response CRC check failed");
                     }
                     else
                     {
@@ -2406,7 +2373,6 @@ namespace EasyModbus
                 }
             }
         }
-
         /// <summary>
         /// Read/Write Multiple Registers (FC23).
         /// </summary>
@@ -2415,7 +2381,7 @@ namespace EasyModbus
         /// <param name="startingAddressWrite">First input register to write</param>
         /// <param name="values">Values to write</param>
         /// <returns>Int Array which contains the Holding registers</returns>
-        public int[] ReadWriteMultipleRegisters(int startingAddressRead, int quantityRead, int startingAddressWrite, int[] values)
+        public ushort[] ReadWriteMultipleRegisters(int startingAddressRead, int quantityRead, int startingAddressWrite, int[] values)
         {
 
             string debugString = "";
@@ -2432,19 +2398,19 @@ namespace EasyModbus
                 if (!serialport.IsOpen)
             	{
             		if (debug) StoreLogData.Instance.Store("SerialPortNotOpenedException Thrown", System.DateTime.Now);
-                    throw new EasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
+                    throw new XojoEasyModbus.Exceptions.SerialPortNotOpenedException("serial port not opened");
             	}
             if (tcpClient == null & !udpFlag & serialport == null)
             {
 				if (debug) StoreLogData.Instance.Store("ConnectionException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.ConnectionException("connection error");
+                throw new XojoEasyModbus.Exceptions.ConnectionException("connection error");
 			}
             if (startingAddressRead > 65535 | quantityRead > 125 | startingAddressWrite > 65535 | values.Length > 121)
             {
 				if (debug) StoreLogData.Instance.Store("ArgumentException Thrown", System.DateTime.Now);
 				throw new ArgumentException("Starting address must be 0 - 65535; quantity must be 0 - 2000");
 			}
-            int[] response;
+            ushort[] response;
             this.transactionIdentifier = BitConverter.GetBytes((uint)transactionIdentifierInternal);
             this.protocolIdentifier = BitConverter.GetBytes((int)0x0000);
             this.length = BitConverter.GetBytes((int)11 + values.Length * 2);
@@ -2479,7 +2445,7 @@ namespace EasyModbus
                 data[17 + i*2] = singleRegisterValue[1];
                 data[18 + i*2] = singleRegisterValue[0];
             }
-            crc = BitConverter.GetBytes(calculateCRC(data, (ushort)(data.Length - 8), 6));
+            crc = BitConverter.GetBytes(CalculateCRC(data, (ushort)(data.Length - 8), 6));
             data[data.Length - 2] = crc[0];
             data[data.Length - 1] = crc[1];
             if (serialport != null)
@@ -2559,24 +2525,24 @@ namespace EasyModbus
             if (data[7] == 0x97 & data[8] == 0x01)
             {
             	if (debug) StoreLogData.Instance.Store("FunctionCodeNotSupportedException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.FunctionCodeNotSupportedException("Function code not supported by master");
+                throw new XojoEasyModbus.Exceptions.FunctionCodeNotSupportedException("Function code not supported by master");
             }
             if (data[7] == 0x97 & data[8] == 0x02)
             {
             	if (debug) StoreLogData.Instance.Store("StartingAddressInvalidException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.StartingAddressInvalidException("Starting address invalid or starting address + quantity invalid");
+                throw new XojoEasyModbus.Exceptions.StartingAddressInvalidException("Starting address invalid or starting address + quantity invalid");
             }
             if (data[7] == 0x97 & data[8] == 0x03)
             {
             	if (debug) StoreLogData.Instance.Store("QuantityInvalidException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.QuantityInvalidException("quantity invalid");
+                throw new XojoEasyModbus.Exceptions.QuantityInvalidException("quantity invalid");
             }
             if (data[7] == 0x97 & data[8] == 0x04)
             {
             	if (debug) StoreLogData.Instance.Store("ModbusException Thrown", System.DateTime.Now);
-                throw new EasyModbus.Exceptions.ModbusException("error reading");
+                throw new XojoEasyModbus.Exceptions.ModbusException("error reading");
             }
-            response = new int[quantityRead];
+            response = new ushort[quantityRead];
             for (int i = 0; i < quantityRead; i++)
             {
                 byte lowByte;
@@ -2587,11 +2553,10 @@ namespace EasyModbus
                 data[9 + i * 2] = lowByte;
                 data[9 + i * 2 + 1] = highByte;
 
-                response[i] = BitConverter.ToInt16(data, (9 + i * 2));
+                response[i] = BitConverter.ToUInt16(data, (9 + i * 2));
             }
             return (response);
         }
-	
 		/// <summary>
 		/// Close connection to Master Device.
 		/// </summary>
@@ -2602,8 +2567,7 @@ namespace EasyModbus
             {
                 if (serialport.IsOpen & !this.receiveActive)
                     serialport.Close();
-                if (ConnectedChanged != null)
-                    ConnectedChanged(this);
+                ConnectedChanged?.Invoke(this);
                 return;
             }
             if (stream != null)
@@ -2611,11 +2575,9 @@ namespace EasyModbus
             if (tcpClient != null)
 			    tcpClient.Close();
             connected = false;
-            if (ConnectedChanged != null)
-                ConnectedChanged(this);
+            ConnectedChanged?.Invoke(this);
 
         }
-
         /// <summary>
         /// Destructor - Close connection to Master Device.
         /// </summary>
@@ -2635,7 +2597,6 @@ namespace EasyModbus
 			    tcpClient.Close();
 			}
 		}
-
         /// <summary>
         /// Returns "TRUE" if Client is connected to Server and "FALSE" if not. In case of Modbus RTU returns if COM-Port is opened
         /// </summary>
@@ -2660,7 +2621,6 @@ namespace EasyModbus
 
 			}
 		}
-
         public bool Available(int timeout)
         {
             // Ping's the local machine.
@@ -2679,7 +2639,6 @@ namespace EasyModbus
             else
                 return false;
         }
-
         /// <summary>
         /// Gets or Sets the IP-Address of the Server.
         /// </summary>
@@ -2694,7 +2653,6 @@ namespace EasyModbus
 				ipAddress = value;
 			}
 		}
-
         /// <summary>
         /// Gets or Sets the Port were the Modbus-TCP Server is reachable (Standard is 502).
         /// </summary>
@@ -2709,7 +2667,6 @@ namespace EasyModbus
 				port = value;
 			}
 		}
-
         /// <summary>
         /// Gets or Sets the UDP-Flag to activate Modbus UDP.
         /// </summary>
@@ -2724,7 +2681,6 @@ namespace EasyModbus
                 udpFlag = value;
             }
         }
-
         /// <summary>
         /// Gets or Sets the Unit identifier in case of serial connection (Default = 0)
         /// </summary>
@@ -2739,8 +2695,6 @@ namespace EasyModbus
                 unitIdentifier = value;
             }
         }
-
-
         /// <summary>
         /// Gets or Sets the Baudrate for serial connection (Default = 9600)
         /// </summary>
@@ -2755,7 +2709,6 @@ namespace EasyModbus
                 baudRate = value;
             }
         }
-
         /// <summary>
         /// Gets or Sets the of Parity in case of serial connection
         /// </summary>
@@ -2774,8 +2727,6 @@ namespace EasyModbus
                     parity = value;
             }
         }
-
-
         /// <summary>
         /// Gets or Sets the number of stopbits in case of serial connection
         /// </summary>
@@ -2794,7 +2745,6 @@ namespace EasyModbus
                     stopBits = value;
             }
         }
-
         /// <summary>
         /// Gets or Sets the connection Timeout in case of ModbusTCP connection
         /// </summary>
@@ -2809,7 +2759,6 @@ namespace EasyModbus
                 connectTimeout = value;
             }
         }
-
         /// <summary>
         /// Gets or Sets the serial Port
         /// </summary>
@@ -2829,8 +2778,10 @@ namespace EasyModbus
                 }
                 if (serialport != null)
                     serialport.Close();
-                this.serialport = new SerialPort();
-                this.serialport.PortName = value;               
+                this.serialport = new SerialPort
+                {
+                    PortName = value
+                };
                 serialport.BaudRate = baudRate;
                 serialport.Parity = parity;
                 serialport.StopBits = stopBits;
@@ -2839,7 +2790,6 @@ namespace EasyModbus
                 serialport.DataReceived += new SerialDataReceivedEventHandler(DataReceivedHandler);
             }
         }
-
         /// <summary>
         /// Gets or Sets the Filename for the LogFile
         /// </summary>

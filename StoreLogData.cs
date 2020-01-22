@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace EasyModbus
+namespace XojoEasyModbus
 {
     /// <summary>
     /// Store Log-Data in a File
@@ -72,7 +72,9 @@ namespace EasyModbus
                     file.WriteLine(timestamp.ToString("dd.MM.yyyy H:mm:ss.ff ") + message);
                 }
             }
+#pragma warning disable CS0168 // La variabile è dichiarata, ma non viene mai usata
             catch (Exception e)
+#pragma warning restore CS0168 // La variabile è dichiarata, ma non viene mai usata
             {
 
             }
