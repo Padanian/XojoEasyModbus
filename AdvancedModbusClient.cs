@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace XojoEasyModbus
+namespace EasyModbus
 {
     public partial class ModbusClient
     {

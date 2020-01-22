@@ -9,18 +9,18 @@ using System.Runtime.InteropServices;
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("XojoEasyModbus")]
-[assembly: AssemblyDescription("Xojo implementation of Stefan Rossmann's EasyModbus")]
+[assembly: AssemblyTitle("EasyModbus")]
+[assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Alessandro Mandelli")]
-[assembly: AssemblyProduct("XojoEasyModbus")]
-[assembly: AssemblyCopyright("Copyright 2020")]
+[assembly: AssemblyCompany("Stefan Rossmann Engineering Solutions")]
+[assembly: AssemblyProduct("EasyModbus")]
+[assembly: AssemblyCopyright("Copyright 2017-2019")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
 // This sets the default COM visibility of types in the assembly to invisible.
 // If you need to expose a type to COM, use [ComVisible(true)] on that type.
-[assembly: ComVisible(true)]
+[assembly: ComVisible(false)]
 
 // The assembly version has following format :
 //
@@ -28,4 +28,4 @@ using System.Runtime.InteropServices;
 //
 // You can specify all the values or you can use the default the Revision and 
 // Build Numbers by using the '*' as shown below:
-[assembly: AssemblyVersion("0.1.0")]
+[assembly: AssemblyVersion("5.5.1")]

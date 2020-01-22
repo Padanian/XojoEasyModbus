@@ -23,63 +23,37 @@ using System.IO.Ports;
 using System.Reflection;
 using System.Text;
 using System.Collections.Generic;
+using RGiesecke.DllExport;
 using System.Runtime.InteropServices;
 
 [InterfaceType(ComInterfaceType.InterfaceIsDual)]
-public interface IXojoManagedInterface
+public interface XojoManagedInterface
 {
     [DispId(1)]
-    int ModbusClientTCP(string ipAddress, int port);
-    string ModbusClientRTU(string serialPort);
-    int ModbusClientInit();
-    bool ConnectRTU();
-    bool ConnectTCP(string ipAddress, int port);
+    int ModbusClient(string ipAddress, int port);
+    string ModbusClient(string serialPort);
+    int ModbusClient();
+    bool Connect();
+    bool Connect(string ipAddress, int port);
     float ConvertRegistersToFloat(int[] registers);
-    float ConvertRegistersToFloatOrderSelect(int[] registers, int registerOrder);
+    float ConvertRegistersToFloat(int[] registers, int registerOrder);
     int ConvertRegistersToInt(int[] registers);
-    int ConvertRegistersToIntOrderSelect(int[] registers, int registerOrder);
-    long ConvertRegistersToLong(int[] registers);
-    long ConvertRegistersToLongOrderSelect(int[] registers, int registerOrder);
-    double ConvertRegistersToDouble(int[] registers);
-    double ConvertRegistersToDoubleOrderSelect(int[] registers, int registerOrder);
-    int[] ConvertFloatToRegisters(float floatValue);
-    int[] ConvertFloatToRegistersOrderSelect(float floatValue, int registerOrder);
-    int[] ConvertIntToRegisters(int intValue);
-    int[] ConvertIntToRegistersOrderSelect(int intValue, int registerOrder);
-    int[] ConvertLongToRegisters(long longValue);
-    int[] ConvertLongToRegistersOrderSelect(long longValue, int registerOrder);
-    int[] ConvertDoubleToRegisters(double doubleValue);
-    int[] ConvertDoubleToRegistersOrderSelect(double doubleValue, int registerOrder);
-    string ConvertRegistersToString(int[] registers, int offset, int stringLength);
-    int[] ConvertStringToRegisters(string stringToConvert);
-    ushort CalculateCRC(byte[] data, UInt16 numberOfBytes, int startByte);
-    bool[] ReadDiscreteInputs(int startingAddress, int quantity);
-    bool[] ReadCoils(int startingAddress, int quantity);
-    int[] ReadHoldingRegisters(int startingAddress, int quantity);
-    int[] ReadInputRegisters(int startingAddress, int quantity);
-    void WriteSingleCoil(int startingAddress, bool value);
-    void WriteSingleRegister(int startingAddress, int value);
-    void WriteMultipleCoils(int startingAddress, bool[] values);
-    void WriteMultipleRegisters(int startingAddress, int[] values);
-    int[] ReadWriteMultipleRegisters(int startingAddressRead, int quantityRead, int startingAddressWrite, int[] values);
-    bool Available(int timeout);
-    void Disconnect();
 
-
+    UInt16 calculateCRC(byte[] data, UInt16 numberOfBytes, int startByte);
     bool DetectValidModbusFrame(byte[] readBuffer, int length);
 }
 
-namespace XojoEasyModbus
+namespace EasyModbus
 
 {
-    /// <summary>
-    /// Implements a ModbusClient.
-    /// </summary>
+	/// <summary>
+	/// Implements a ModbusClient.
+	/// </summary>
     /// 
     [ClassInterface(ClassInterfaceType.None)]
-    public partial class XojoModbusClient : IXojoManagedInterface
-    {
-        #region Declarations
+	public partial class XojoModbusClient : XojoManagedInterface
+	{
+#region Declarations
         public enum RegisterOrder { LowHigh = 0, HighLow = 1 };
         private bool debug=false;
 		private TcpClient tcpClient;
@@ -117,18 +91,13 @@ namespace XojoEasyModbus
         public event ConnectedChangedHandler ConnectedChanged;
 
         NetworkStream stream;
-
-        private bool dataReceived = false;
-        private bool receiveActive = false;
-        private byte[] readBuffer = new byte[256];
-        private int bytesToRead = 0;
-        #endregion
+#endregion
         /// <summary>
         /// Constructor which determines the Master ip-address and the Master Port.
         /// </summary>
         /// <param name="ipAddress">IP-Address of the Master device</param>
         /// <param name="port">Listening port of the Master device (should be 502)</param>
-        public int ModbusClientTCP(string ipAddress, int port) 
+        public int ModbusClient(string ipAddress, int port) 
 		{
 			if (debug) StoreLogData.Instance.Store("EasyModbus library initialized for Modbus-TCP, IPAddress: " + ipAddress + ", Port: "+port ,System.DateTime.Now);
 #if (!COMMERCIAL)
@@ -144,7 +113,7 @@ namespace XojoEasyModbus
         /// Constructor which determines the Serial-Port
         /// </summary>
         /// <param name="serialPort">Serial-Port Name e.G. "COM1"</param>
-        public string ModbusClientRTU(string serialPort)
+        public string ModbusClient(string serialPort)
         {
         	if (debug) StoreLogData.Instance.Store("EasyModbus library initialized for Modbus-RTU, COM-Port: " + serialPort ,System.DateTime.Now);
 #if (!COMMERCIAL)
@@ -166,7 +135,7 @@ namespace XojoEasyModbus
         /// <summary>
         /// Parameterless constructor
         /// </summary>
-        public int ModbusClientInit()
+        public int ModbusClient()
         {
         	if (debug) StoreLogData.Instance.Store("EasyModbus library initialized for Modbus-TCP" ,System.DateTime.Now);
 #if (!COMMERCIAL)
@@ -179,7 +148,7 @@ namespace XojoEasyModbus
 		/// <summary>
 		/// Establish connection to Master device in case of Modbus TCP. Opens COM-Port in case of Modbus RTU
 		/// </summary>
-		public bool ConnectRTU()
+		public bool Connect()
 		{
             if (serialport != null)
             {
@@ -234,7 +203,7 @@ namespace XojoEasyModbus
                 {
                     ConnectedChanged(this);
                 }
-                catch (Exception)
+                catch
                 {
 
                 }
@@ -243,7 +212,7 @@ namespace XojoEasyModbus
 		/// <summary>
 		/// Establish connection to Master device in case of Modbus TCP.
 		/// </summary>
-		public bool ConnectTCP(string ipAddress, int port)
+		public bool Connect(string ipAddress, int port)
 		{
             if (!udpFlag)
             {
@@ -268,7 +237,8 @@ namespace XojoEasyModbus
                 connected = true;
             }
 
-            ConnectedChanged?.Invoke(this);
+            if (ConnectedChanged != null)
+                ConnectedChanged(this);
             return connected;
         }
         /// <summary>
@@ -298,7 +268,7 @@ namespace XojoEasyModbus
         /// <param name="registers">Two Register values received from Modbus</param>
         /// <param name="registerOrder">Desired Word Order (Low Register first or High Register first</param>
         /// <returns>Connected float value</returns>
-        public  float ConvertRegistersToFloatOrderSelect(int[] registers, int registerOrder)
+        public  float ConvertRegistersToFloat(int[] registers, int registerOrder)
         {
             int [] swappedRegisters = {registers[0],registers[1]};
             if (registerOrder == 1) 
@@ -332,21 +302,22 @@ namespace XojoEasyModbus
         /// <param name="registers">Two Register values received from Modbus</param>
         /// <param name="registerOrder">Desired Word Order (Low Register first or High Register first</param>
         /// <returns>Connecteds 32 Bit Integer value</returns>
-        public int ConvertRegistersToIntOrderSelect(int[] registers, int registerOrder)
+        public static Int32 ConvertRegistersToInt(int[] registers, RegisterOrder registerOrder)
         {
             int[] swappedRegisters = { registers[0], registers[1] };
-            if (registerOrder == 1)
+            if (registerOrder == RegisterOrder.HighLow)
                 swappedRegisters = new int[] { registers[1], registers[0] };
             XojoModbusClient NewXojoModbusClient = new XojoModbusClient();
             int temp = NewXojoModbusClient.ConvertRegistersToInt(swappedRegisters);
             return temp;
         }
+
         /// <summary>
         /// Convert four 16 Bit Registers to 64 Bit Integer value Register Order "LowHigh": Reg0: Low Word.....Reg3: High Word, "HighLow": Reg0: High Word.....Reg3: Low Word
         /// </summary>
         /// <param name="registers">four Register values received from Modbus</param>
         /// <returns>64 bit value</returns>
-        public long ConvertRegistersToLong(int[] registers)
+        public static Int64 ConvertRegistersToLong(int[] registers)
         {
             if (registers.Length != 4)
                 throw new ArgumentException("Input Array length invalid - Array langth must be '4'");
@@ -370,27 +341,29 @@ namespace XojoEasyModbus
                                 };
             return BitConverter.ToInt64(longBytes, 0);
         }
+
         /// <summary>
         /// Convert four 16 Bit Registers to 64 Bit Integer value - Registers can be swapped
         /// </summary>
         /// <param name="registers">four Register values received from Modbus</param>
         /// <param name="registerOrder">Desired Word Order (Low Register first or High Register first</param>
         /// <returns>Connected 64 Bit Integer value</returns>
-        public  long ConvertRegistersToLongOrderSelect(int[] registers, int registerOrder)
+        public static Int64 ConvertRegistersToLong(int[] registers, RegisterOrder registerOrder)
         {
             if (registers.Length != 4)
                 throw new ArgumentException("Input Array length invalid - Array langth must be '4'");
             int[] swappedRegisters = { registers[0], registers[1], registers[2], registers[3] };
-            if (registerOrder == 1)
+            if (registerOrder == RegisterOrder.HighLow)
                 swappedRegisters = new int[] { registers[3], registers[2], registers[1], registers[0] };
             return ConvertRegistersToLong(swappedRegisters);
         }
+
         /// <summary>
         /// Convert four 16 Bit Registers to 64 Bit double prec. value Register Order "LowHigh": Reg0: Low Word.....Reg3: High Word, "HighLow": Reg0: High Word.....Reg3: Low Word
         /// </summary>
         /// <param name="registers">four Register values received from Modbus</param>
         /// <returns>64 bit value</returns>
-        public double ConvertRegistersToDouble(int[] registers)
+        public static double ConvertRegistersToDouble(int[] registers)
         {
             if (registers.Length != 4)
                 throw new ArgumentException("Input Array length invalid - Array langth must be '4'");
@@ -414,27 +387,29 @@ namespace XojoEasyModbus
                                 };
             return BitConverter.ToDouble(longBytes, 0);
         }
+
         /// <summary>
         /// Convert four 16 Bit Registers to 64 Bit double prec. value - Registers can be swapped
         /// </summary>
         /// <param name="registers">four Register values received from Modbus</param>
         /// <param name="registerOrder">Desired Word Order (Low Register first or High Register first</param>
         /// <returns>Connected double prec. float value</returns>
-        public  double ConvertRegistersToDoubleOrderSelect(int[] registers, int registerOrder)
+        public static double ConvertRegistersToDouble(int[] registers, RegisterOrder registerOrder)
         {
             if (registers.Length != 4)
                 throw new ArgumentException("Input Array length invalid - Array langth must be '4'");
             int[] swappedRegisters = { registers[0], registers[1], registers[2], registers[3] };
-            if (registerOrder == 1)
+            if (registerOrder == RegisterOrder.HighLow)
                 swappedRegisters = new int[] { registers[3], registers[2], registers[1], registers[0] };
             return ConvertRegistersToDouble(swappedRegisters);
         }
+
         /// <summary>
         /// Converts float to two ModbusRegisters - Example:  modbusClient.WriteMultipleRegisters(24, EasyModbus.ModbusClient.ConvertFloatToTwoRegisters((float)1.22));
         /// </summary>
         /// <param name="floatValue">Float value which has to be converted into two registers</param>
         /// <returns>Register values</returns>
-        public int[] ConvertFloatToRegisters(float floatValue)
+        public static int[] ConvertFloatToRegisters(float floatValue)
         {
             byte[] floatBytes = BitConverter.GetBytes(floatValue);
             byte[] highRegisterBytes = 
@@ -459,26 +434,28 @@ namespace XojoEasyModbus
             };
             return returnValue;
         }
+
         /// <summary>
         /// Converts float to two ModbusRegisters Registers - Registers can be swapped
         /// </summary>
         /// <param name="floatValue">Float value which has to be converted into two registers</param>
         /// <param name="registerOrder">Desired Word Order (Low Register first or High Register first</param>
         /// <returns>Register values</returns>
-        public int[] ConvertFloatToRegistersOrderSelect(float floatValue, int registerOrder)
+        public static int[] ConvertFloatToRegisters(float floatValue, RegisterOrder registerOrder)
         {
             int[] registerValues = ConvertFloatToRegisters(floatValue);
             int[] returnValue = registerValues;
-            if (registerOrder == 1)
+            if (registerOrder == RegisterOrder.HighLow)
                 returnValue = new Int32[] { registerValues[1], registerValues[0] };
             return returnValue;
         }
+
         /// <summary>
         /// Converts 32 Bit Value to two ModbusRegisters
         /// </summary>
         /// <param name="intValue">Int value which has to be converted into two registers</param>
         /// <returns>Register values</returns>
-        public int[] ConvertIntToRegisters(Int32 intValue)
+        public static int[] ConvertIntToRegisters(Int32 intValue)
         {
             byte[] doubleBytes = BitConverter.GetBytes(intValue);
             byte[] highRegisterBytes = 
@@ -503,26 +480,28 @@ namespace XojoEasyModbus
             };
             return returnValue;
         }
+
         /// <summary>
         /// Converts 32 Bit Value to two ModbusRegisters Registers - Registers can be swapped
         /// </summary>
         /// <param name="intValue">Double value which has to be converted into two registers</param>
         /// <param name="registerOrder">Desired Word Order (Low Register first or High Register first</param>
         /// <returns>Register values</returns>
-        public int[] ConvertIntToRegistersOrderSelect(Int32 intValue, int registerOrder)
+        public static int[] ConvertIntToRegisters(Int32 intValue, RegisterOrder registerOrder)
         {
             int[] registerValues = ConvertIntToRegisters(intValue);
             int[] returnValue = registerValues;
-            if (registerOrder == 1)
+            if (registerOrder == RegisterOrder.HighLow)
                 returnValue = new Int32[] { registerValues[1], registerValues[0] };
             return returnValue;
         }
+
         /// <summary>
         /// Converts 64 Bit Value to four ModbusRegisters
         /// </summary>
         /// <param name="longValue">long value which has to be converted into four registers</param>
         /// <returns>Register values</returns>
-        public int[] ConvertLongToRegisters(long longValue)
+        public static int[] ConvertLongToRegisters(Int64 longValue)
         {
             byte[] longBytes = BitConverter.GetBytes(longValue);
             byte[] highRegisterBytes =
@@ -563,26 +542,28 @@ namespace XojoEasyModbus
             };
             return returnValue;
         }
+
         /// <summary>
         /// Converts 64 Bit Value to four ModbusRegisters - Registers can be swapped
         /// </summary>
         /// <param name="longValue">long value which has to be converted into four registers</param>
         /// <param name="registerOrder">Desired Word Order (Low Register first or High Register first</param>
         /// <returns>Register values</returns>
-        public int[] ConvertLongToRegistersOrderSelect(long longValue, int registerOrder)
+        public static int[] ConvertLongToRegisters(Int64 longValue, RegisterOrder registerOrder)
         {
             int[] registerValues = ConvertLongToRegisters(longValue);
             int[] returnValue = registerValues;
-            if (registerOrder == 1)
+            if (registerOrder == RegisterOrder.HighLow)
                 returnValue = new int[] { registerValues[3], registerValues[2], registerValues[1], registerValues[0] };
             return returnValue;
         }
+
         /// <summary>
         /// Converts 64 Bit double prec Value to four ModbusRegisters
         /// </summary>
         /// <param name="doubleValue">double value which has to be converted into four registers</param>
         /// <returns>Register values</returns>
-        public int[] ConvertDoubleToRegisters(double doubleValue)
+        public static int[] ConvertDoubleToRegisters(double doubleValue)
         {
             byte[] doubleBytes = BitConverter.GetBytes(doubleValue);
             byte[] highRegisterBytes =
@@ -623,20 +604,22 @@ namespace XojoEasyModbus
             };
             return returnValue;
         }
+
         /// <summary>
         /// Converts 64 Bit double prec. Value to four ModbusRegisters - Registers can be swapped
         /// </summary>
         /// <param name="doubleValue">double value which has to be converted into four registers</param>
         /// <param name="registerOrder">Desired Word Order (Low Register first or High Register first</param>
         /// <returns>Register values</returns>
-        public int[] ConvertDoubleToRegistersOrderSelect(double doubleValue, int registerOrder)
+        public static int[] ConvertDoubleToRegisters(double doubleValue, RegisterOrder registerOrder)
         {
             int[] registerValues = ConvertDoubleToRegisters(doubleValue);
             int[] returnValue = registerValues;
-            if (registerOrder == 1)
+            if (registerOrder == RegisterOrder.HighLow)
                 returnValue = new int[] { registerValues[3], registerValues[2], registerValues[1], registerValues[0] };
             return returnValue;
         }
+
         /// <summary>
         /// Converts 16 - Bit Register values to String
         /// </summary>
@@ -644,10 +627,10 @@ namespace XojoEasyModbus
         /// <param name="offset">First Register containing the String to convert</param>
         /// <param name="stringLength">number of characters in String (must be even)</param>
         /// <returns>Converted String</returns>
-        public string ConvertRegistersToString(int[] registers, int offset, int stringLength)
+        public static string ConvertRegistersToString(int[] registers, int offset, int stringLength)
         { 
         byte[] result = new byte[stringLength];
-        byte[] registerResult ;
+        byte[] registerResult = new byte[2];
         
             for (int i = 0; i < stringLength/2; i++)
             {
@@ -657,12 +640,13 @@ namespace XojoEasyModbus
             }
             return System.Text.Encoding.Default.GetString(result);
         }
+
         /// <summary>
         /// Converts a String to 16 - Bit Registers
         /// </summary>
         /// <param name="registers">Register array received via Modbus</param>
         /// <returns>Converted String</returns>
-        public int[] ConvertStringToRegisters(string stringToConvert)
+        public static int[] ConvertStringToRegisters(string stringToConvert)
         {
             byte[] array = System.Text.Encoding.ASCII.GetBytes(stringToConvert);
             int[] returnarray = new int[stringToConvert.Length / 2 + stringToConvert.Length % 2];
@@ -676,13 +660,15 @@ namespace XojoEasyModbus
             }
             return returnarray;
         }
+
+
         /// <summary>
         /// Calculates the CRC16 for Modbus-RTU
         /// </summary>
         /// <param name="data">Byte buffer to send</param>
         /// <param name="numberOfBytes">Number of bytes to calculate CRC</param>
         /// <param name="startByte">First byte in buffer to start calculating CRC</param>
-        public ushort CalculateCRC(byte[] data, ushort numberOfBytes, int startByte)
+        public UInt16 calculateCRC(byte[] data, UInt16 numberOfBytes, int startByte)
         { 
             byte[] auchCRCHi = {
             0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81,
@@ -743,6 +729,58 @@ namespace XojoEasyModbus
             }
             return (UInt16)((UInt16)uchCRCHi << 8 | uchCRCLo);           
         }
+
+        private bool dataReceived = false;
+        private bool receiveActive = false;
+        private byte[] readBuffer = new byte[256];
+        private int bytesToRead = 0;
+        /*private int akjjjctualPositionToRead = 0;
+        DateTime dateTimeLastRead;*/
+/*
+        private void DataReceivedHandler(object sender,
+                        SerialDataReceivedEventArgs e)
+        {
+            long ticksWait = TimeSpan.TicksPerMillisecond * 2000;
+            SerialPort sp = (SerialPort)sender;
+            
+            if (bytesToRead == 0 || sp.BytesToRead == 0)
+            {
+                actualPositionToRead = 0;
+                sp.DiscardInBuffer();
+                dataReceived = false;
+                receiveActive = false;
+                return;
+            }
+
+            if (actualPositionToRead == 0 && !dataReceived)
+                readBuffer = new byte[256];
+
+            //if ((DateTime.Now.Ticks - dateTimeLastRead.Ticks) > ticksWait)
+            //{
+            //    readBuffer = new byte[256];
+            //    actualPositionToRead = 0;
+            //}
+            int numberOfBytesInBuffer = sp.BytesToRead;
+            sp.Read(readBuffer, actualPositionToRead, ((numberOfBytesInBuffer + actualPositionToRead) > readBuffer.Length) ? 0 : numberOfBytesInBuffer);
+            actualPositionToRead = actualPositionToRead + numberOfBytesInBuffer;
+            //sp.DiscardInBuffer();
+            //if (DetectValidModbusFrame(readBuffer, (actualPositionToRead < readBuffer.Length) ? actualPositionToRead : readBuffer.Length) | bytesToRead <= actualPositionToRead)
+            if (actualPositionToRead >= bytesToRead)
+            {
+
+                    dataReceived = true;
+                    bytesToRead = 0;
+                    actualPositionToRead = 0;
+                    if (debug) StoreLogData.Instance.Store("Received Serial-Data: " + BitConverter.ToString(readBuffer), System.DateTime.Now);
+
+            }
+
+
+            //dateTimeLastRead = DateTime.Now;
+        }
+ */       
+
+        
         private void DataReceivedHandler(object sender,
                         SerialDataReceivedEventArgs e)
         {
@@ -783,7 +821,7 @@ namespace XojoEasyModbus
             	sp.Read(rxbytearray, 0, numbytes);
                 Array.Copy(rxbytearray,0, readBuffer,actualPositionToRead, (actualPositionToRead + rxbytearray.Length) <= bytesToRead ? rxbytearray.Length : bytesToRead - actualPositionToRead); 
             	
-            	actualPositionToRead += rxbytearray.Length;
+            	actualPositionToRead = actualPositionToRead + rxbytearray.Length;
             	
             	}
             	catch (Exception){
@@ -811,11 +849,16 @@ namespace XojoEasyModbus
             dataReceived = true;
             receiveActive = false;
             serialport.DataReceived += new SerialDataReceivedEventHandler(DataReceivedHandler);
+            if (ReceiveDataChanged != null)
+            {
 
-            ReceiveDataChanged?.Invoke(this);
+                ReceiveDataChanged(this);
 
+            }
+            
             //sp.DiscardInBuffer();
         }
+
         public bool DetectValidModbusFrame(byte[] readBuffer, int length)
         {
         	// minimum length 6 bytes
@@ -825,11 +868,15 @@ namespace XojoEasyModbus
         	if ((readBuffer[0] < 1) | (readBuffer[0] > 247))
         		return false;
             //CRC correct?
-            byte[] crc = BitConverter.GetBytes(CalculateCRC(readBuffer, (ushort)(length-2), 0));
+            byte[] crc = new byte[2];
+            crc = BitConverter.GetBytes(calculateCRC(readBuffer, (ushort)(length-2), 0));
                 if (crc[0] != readBuffer[length-2] | crc[1] != readBuffer[length-1])
                 	return false;
             return true;
         }
+
+
+
         /// <summary>
         /// Read Discrete Inputs from Server device (FC2).
         /// </summary>
@@ -880,7 +927,7 @@ namespace XojoEasyModbus
                             this.crc[0],
                             this.crc[1]
                             };
-                crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));
+                crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));
                 data[12] = crc[0];
                 data[13] = crc[1];
 
@@ -985,7 +1032,7 @@ namespace XojoEasyModbus
             }
             if (serialport != null)
             {
-            crc = BitConverter.GetBytes(CalculateCRC(data, (ushort)(data[8]+3), 6));
+            crc = BitConverter.GetBytes(calculateCRC(data, (ushort)(data[8]+3), 6));
                 if ((crc[0] != data[data[8] + 9] | crc[1] != data[data[8] + 10]) & dataReceived)
                 {
                 	if (debug) StoreLogData.Instance.Store("CRCCheckFailedException Thrown", System.DateTime.Now);
@@ -1024,6 +1071,8 @@ namespace XojoEasyModbus
 			}    		
     		return (response);
 		}
+
+
         /// <summary>
         /// Read Coils from Server device (FC1).
         /// </summary>
@@ -1074,7 +1123,7 @@ namespace XojoEasyModbus
                             this.crc[1]
             };
 
-            crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));
+            crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));
            data[12] = crc[0];
                 data[13] = crc[1];
             if (serialport != null)
@@ -1178,7 +1227,7 @@ namespace XojoEasyModbus
             }
             if (serialport != null)
             {
-            crc = BitConverter.GetBytes(CalculateCRC(data, (ushort)(data[8]+3), 6));
+            crc = BitConverter.GetBytes(calculateCRC(data, (ushort)(data[8]+3), 6));
                 if ((crc[0] != data[data[8]+9] | crc[1] != data[data[8]+10]) & dataReceived)
                 {
                 	if (debug) StoreLogData.Instance.Store("CRCCheckFailedException Thrown", System.DateTime.Now);
@@ -1217,6 +1266,8 @@ namespace XojoEasyModbus
 			}   		
     		return (response);
 		}
+
+
         /// <summary>
         /// Read Holding Registers from Master device (FC3).
         /// </summary>
@@ -1265,7 +1316,7 @@ namespace XojoEasyModbus
                             this.crc[0],
                             this.crc[1]
             };
-            crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));
+            crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));
             data[12] = crc[0];
             data[13] = crc[1];
             if (serialport != null)
@@ -1367,7 +1418,7 @@ namespace XojoEasyModbus
             }
             if (serialport != null)
             {
-            crc = BitConverter.GetBytes(CalculateCRC(data, (ushort)(data[8]+3), 6));
+            crc = BitConverter.GetBytes(calculateCRC(data, (ushort)(data[8]+3), 6));
                 if ((crc[0] != data[data[8]+9] | crc[1] != data[data[8]+10])& dataReceived)
                 {
                 	if (debug) StoreLogData.Instance.Store("CRCCheckFailedException Thrown", System.DateTime.Now);
@@ -1414,6 +1465,9 @@ namespace XojoEasyModbus
 			}			
     		return (response);			
 		}
+
+
+
         /// <summary>
         /// Read Input Registers from Master device (FC4).
         /// </summary>
@@ -1463,7 +1517,7 @@ namespace XojoEasyModbus
                             this.crc[0],
                             this.crc[1]        
             };
-            crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));
+            crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));
             data[12] = crc[0];
             data[13] = crc[1];
             if (serialport != null)
@@ -1566,7 +1620,7 @@ namespace XojoEasyModbus
             }
             if (serialport != null)
             {
-            crc = BitConverter.GetBytes(CalculateCRC(data, (ushort)(data[8]+3), 6));
+            crc = BitConverter.GetBytes(calculateCRC(data, (ushort)(data[8]+3), 6));
                 if ((crc[0] != data[data[8]+9] | crc[1] != data[data[8]+10]) & dataReceived)
                 {
                 	if (debug) StoreLogData.Instance.Store("CRCCheckFailedException Thrown", System.DateTime.Now);
@@ -1613,6 +1667,8 @@ namespace XojoEasyModbus
 			}
     		return (response);
 		}
+	
+	
 		/// <summary>
 		/// Write single Coil to Master device (FC5).
 		/// </summary>
@@ -1634,7 +1690,7 @@ namespace XojoEasyModbus
 				if (debug) StoreLogData.Instance.Store("ConnectionException Thrown", System.DateTime.Now);
                 throw new EasyModbus.Exceptions.ConnectionException("connection error");
 			}
-            byte[] coilValue ;
+            byte[] coilValue = new byte[2];
             this.transactionIdentifier = BitConverter.GetBytes((uint)transactionIdentifierInternal);
             this.protocolIdentifier = BitConverter.GetBytes((int)0x0000);
             this.length = BitConverter.GetBytes((int)0x0006);
@@ -1663,7 +1719,7 @@ namespace XojoEasyModbus
                             this.crc[0],
                             this.crc[1]    
                             };
-            crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));
+            crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));
             data[12] = crc[0];
             data[13] = crc[1];
             if (serialport != null)
@@ -1761,7 +1817,7 @@ namespace XojoEasyModbus
             }
             if (serialport != null)
             {
-             crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));           
+             crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));           
                 if ((crc[0] != data[12] | crc[1] != data[13]) & dataReceived)
                 {
                 	if (debug) StoreLogData.Instance.Store("CRCCheckFailedException Thrown", System.DateTime.Now);
@@ -1793,6 +1849,8 @@ namespace XojoEasyModbus
                 }
             }
         }
+
+
         /// <summary>
         /// Write single Register to Master device (FC6).
         /// </summary>
@@ -1813,12 +1871,13 @@ namespace XojoEasyModbus
 				if (debug) StoreLogData.Instance.Store("ConnectionException Thrown", System.DateTime.Now);
                 throw new EasyModbus.Exceptions.ConnectionException("connection error");
 			}
-            byte[] registerValue = BitConverter.GetBytes((int)value);
+            byte[] registerValue = new byte[2];
             this.transactionIdentifier = BitConverter.GetBytes((uint)transactionIdentifierInternal);
             this.protocolIdentifier = BitConverter.GetBytes((int)0x0000);
             this.length = BitConverter.GetBytes((int)0x0006);
             this.functionCode = 0x06;
             this.startingAddress = BitConverter.GetBytes(startingAddress);
+                registerValue = BitConverter.GetBytes((int)value);
 
             Byte[] data = new byte[]{	this.transactionIdentifier[1],
 							this.transactionIdentifier[0],
@@ -1835,7 +1894,7 @@ namespace XojoEasyModbus
                             this.crc[0],
                             this.crc[1]    
                             };
-            crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));
+            crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));
             data[12] = crc[0];
             data[13] = crc[1];
             if (serialport != null)
@@ -1935,7 +1994,7 @@ namespace XojoEasyModbus
             }
             if (serialport != null)
             {
-             crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));           
+             crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));           
                 if ((crc[0] != data[12] | crc[1] != data[13]) & dataReceived)
                 {
                     if (debug) StoreLogData.Instance.Store("CRCCheckFailedException Thrown", System.DateTime.Now);
@@ -1967,6 +2026,7 @@ namespace XojoEasyModbus
                 }
             }
         }
+
         /// <summary>
         /// Write multiple coils to Master device (FC15).
         /// </summary>
@@ -2030,7 +2090,7 @@ namespace XojoEasyModbus
 
                 data[13 + (i / 8)] = singleCoilValue;            
             }
-            crc = BitConverter.GetBytes(CalculateCRC(data, (ushort)(data.Length - 8), 6));
+            crc = BitConverter.GetBytes(calculateCRC(data, (ushort)(data.Length - 8), 6));
             data[data.Length - 2] = crc[0];
             data[data.Length - 1] = crc[1];
             if (serialport != null)
@@ -2130,7 +2190,7 @@ namespace XojoEasyModbus
             }
             if (serialport != null)
             {
-             crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));           
+             crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));           
                 if ((crc[0] != data[12] | crc[1] != data[13]) & dataReceived)
                 {
                 if (debug) StoreLogData.Instance.Store("CRCCheckFailedException Thrown", System.DateTime.Now);
@@ -2162,6 +2222,7 @@ namespace XojoEasyModbus
                 }
             }
         }
+
         /// <summary>
         /// Write multiple registers to Master device (FC16).
         /// </summary>
@@ -2213,7 +2274,7 @@ namespace XojoEasyModbus
                 data[13 + i*2] = singleRegisterValue[1];
                 data[14 + i*2] = singleRegisterValue[0];
             }
-            crc = BitConverter.GetBytes(CalculateCRC(data, (ushort)(data.Length - 8), 6));
+            crc = BitConverter.GetBytes(calculateCRC(data, (ushort)(data.Length - 8), 6));
             data[data.Length - 2] = crc[0];
             data[data.Length - 1] = crc[1];
             if (serialport != null)
@@ -2313,7 +2374,7 @@ namespace XojoEasyModbus
             }
             if (serialport != null)
             {
-             crc = BitConverter.GetBytes(CalculateCRC(data, 6, 6));           
+             crc = BitConverter.GetBytes(calculateCRC(data, 6, 6));           
                 if ((crc[0] != data[12] | crc[1] != data[13])  &dataReceived)
                 {
                 if (debug) StoreLogData.Instance.Store("CRCCheckFailedException Thrown", System.DateTime.Now);
@@ -2345,6 +2406,7 @@ namespace XojoEasyModbus
                 }
             }
         }
+
         /// <summary>
         /// Read/Write Multiple Registers (FC23).
         /// </summary>
@@ -2361,11 +2423,11 @@ namespace XojoEasyModbus
         		debugString = debugString + values[i] + " ";
         	if (debug) StoreLogData.Instance.Store("FC23 (Read and Write multiple Registers to Server device), StartingAddress Read: "+ startingAddressRead+ ", Quantity Read: "+quantityRead+", startingAddressWrite: " + startingAddressWrite +", Values: " + debugString, System.DateTime.Now);
             transactionIdentifierInternal++;
-            byte [] startingAddressReadLocal= BitConverter.GetBytes(startingAddressRead);
-		    byte [] quantityReadLocal = BitConverter.GetBytes(quantityRead);
-            byte[] startingAddressWriteLocal = BitConverter.GetBytes(startingAddressWrite);
-            byte[] quantityWriteLocal =BitConverter.GetBytes(values.Length);
-            byte writeByteCountLocal = Convert.ToByte(values.Length * 2); ;
+            byte [] startingAddressReadLocal = new byte[2];
+		    byte [] quantityReadLocal = new byte[2];
+            byte[] startingAddressWriteLocal = new byte[2];
+            byte[] quantityWriteLocal = new byte[2];
+            byte writeByteCountLocal = 0;
             if (serialport != null)
                 if (!serialport.IsOpen)
             	{
@@ -2387,6 +2449,11 @@ namespace XojoEasyModbus
             this.protocolIdentifier = BitConverter.GetBytes((int)0x0000);
             this.length = BitConverter.GetBytes((int)11 + values.Length * 2);
             this.functionCode = 0x17;
+            startingAddressReadLocal = BitConverter.GetBytes(startingAddressRead);
+            quantityReadLocal = BitConverter.GetBytes(quantityRead);
+            startingAddressWriteLocal = BitConverter.GetBytes(startingAddressWrite);
+            quantityWriteLocal = BitConverter.GetBytes(values.Length);
+            writeByteCountLocal = Convert.ToByte(values.Length * 2);
             Byte[] data = new byte[17 +2+ values.Length*2];
             data[0] =               this.transactionIdentifier[1];
             data[1] =   		    this.transactionIdentifier[0];
@@ -2412,7 +2479,7 @@ namespace XojoEasyModbus
                 data[17 + i*2] = singleRegisterValue[1];
                 data[18 + i*2] = singleRegisterValue[0];
             }
-            crc = BitConverter.GetBytes(CalculateCRC(data, (ushort)(data.Length - 8), 6));
+            crc = BitConverter.GetBytes(calculateCRC(data, (ushort)(data.Length - 8), 6));
             data[data.Length - 2] = crc[0];
             data[data.Length - 1] = crc[1];
             if (serialport != null)
@@ -2524,6 +2591,7 @@ namespace XojoEasyModbus
             }
             return (response);
         }
+	
 		/// <summary>
 		/// Close connection to Master Device.
 		/// </summary>
@@ -2534,7 +2602,8 @@ namespace XojoEasyModbus
             {
                 if (serialport.IsOpen & !this.receiveActive)
                     serialport.Close();
-                ConnectedChanged?.Invoke(this);
+                if (ConnectedChanged != null)
+                    ConnectedChanged(this);
                 return;
             }
             if (stream != null)
@@ -2542,9 +2611,11 @@ namespace XojoEasyModbus
             if (tcpClient != null)
 			    tcpClient.Close();
             connected = false;
-            ConnectedChanged?.Invoke(this);
+            if (ConnectedChanged != null)
+                ConnectedChanged(this);
 
         }
+
         /// <summary>
         /// Destructor - Close connection to Master Device.
         /// </summary>
@@ -2564,6 +2635,7 @@ namespace XojoEasyModbus
 			    tcpClient.Close();
 			}
 		}
+
         /// <summary>
         /// Returns "TRUE" if Client is connected to Server and "FALSE" if not. In case of Modbus RTU returns if COM-Port is opened
         /// </summary>
@@ -2588,6 +2660,7 @@ namespace XojoEasyModbus
 
 			}
 		}
+
         public bool Available(int timeout)
         {
             // Ping's the local machine.
@@ -2606,6 +2679,7 @@ namespace XojoEasyModbus
             else
                 return false;
         }
+
         /// <summary>
         /// Gets or Sets the IP-Address of the Server.
         /// </summary>
@@ -2620,6 +2694,7 @@ namespace XojoEasyModbus
 				ipAddress = value;
 			}
 		}
+
         /// <summary>
         /// Gets or Sets the Port were the Modbus-TCP Server is reachable (Standard is 502).
         /// </summary>
@@ -2634,6 +2709,7 @@ namespace XojoEasyModbus
 				port = value;
 			}
 		}
+
         /// <summary>
         /// Gets or Sets the UDP-Flag to activate Modbus UDP.
         /// </summary>
@@ -2648,6 +2724,7 @@ namespace XojoEasyModbus
                 udpFlag = value;
             }
         }
+
         /// <summary>
         /// Gets or Sets the Unit identifier in case of serial connection (Default = 0)
         /// </summary>
@@ -2662,6 +2739,8 @@ namespace XojoEasyModbus
                 unitIdentifier = value;
             }
         }
+
+
         /// <summary>
         /// Gets or Sets the Baudrate for serial connection (Default = 9600)
         /// </summary>
@@ -2676,6 +2755,7 @@ namespace XojoEasyModbus
                 baudRate = value;
             }
         }
+
         /// <summary>
         /// Gets or Sets the of Parity in case of serial connection
         /// </summary>
@@ -2694,6 +2774,8 @@ namespace XojoEasyModbus
                     parity = value;
             }
         }
+
+
         /// <summary>
         /// Gets or Sets the number of stopbits in case of serial connection
         /// </summary>
@@ -2712,6 +2794,7 @@ namespace XojoEasyModbus
                     stopBits = value;
             }
         }
+
         /// <summary>
         /// Gets or Sets the connection Timeout in case of ModbusTCP connection
         /// </summary>
@@ -2726,6 +2809,7 @@ namespace XojoEasyModbus
                 connectTimeout = value;
             }
         }
+
         /// <summary>
         /// Gets or Sets the serial Port
         /// </summary>
@@ -2745,10 +2829,8 @@ namespace XojoEasyModbus
                 }
                 if (serialport != null)
                     serialport.Close();
-                this.serialport = new SerialPort
-                {
-                    PortName = value
-                };
+                this.serialport = new SerialPort();
+                this.serialport.PortName = value;               
                 serialport.BaudRate = baudRate;
                 serialport.Parity = parity;
                 serialport.StopBits = stopBits;
@@ -2757,6 +2839,7 @@ namespace XojoEasyModbus
                 serialport.DataReceived += new SerialDataReceivedEventHandler(DataReceivedHandler);
             }
         }
+
         /// <summary>
         /// Gets or Sets the Filename for the LogFile
         /// </summary>
